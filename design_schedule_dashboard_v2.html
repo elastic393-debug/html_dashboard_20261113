@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>設計スケジュール・負荷＆進捗管理ダッシュボード</title>
+<style>
+:root{--bg:#f4f7fb;--panel:#fff;--ink:#172033;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--blue-soft:#dbeafe;--green:#15803d;--green-soft:#dcfce7;--amber:#b45309;--amber-soft:#fef3c7;--red:#b91c1c;--red-soft:#fee2e2;--purple:#7c3aed;--purple-soft:#ede9fe}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Noto Sans JP",sans-serif;font-size:14px;line-height:1.5}
+.wrap{max-width:1600px;margin:auto;padding:24px}.hero{background:linear-gradient(120deg,#172554,#1d4ed8 68%,#38bdf8);color:white;padding:28px;border-radius:20px;box-shadow:0 12px 30px #1e3a8a22}.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:11px;font-weight:800;opacity:.8}.hero h1{font-size:clamp(23px,3vw,34px);margin:6px 0 8px;line-height:1.2}.hero p{margin:0;color:#dbeafe}.hero-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;background:#ffffff22;border:1px solid #ffffff35}
+.section{margin-top:24px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}.section h2{font-size:18px;margin:0;font-weight:800}.sub{color:var(--muted);font-size:12px;margin-top:3px}.grid{display:grid;gap:14px}.cards{grid-template-columns:repeat(5,minmax(0,1fr))}.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 3px 12px #0f172a08}.card-label{font-size:12px;color:var(--muted);font-weight:700}.card-value{font-size:32px;font-weight:850;letter-spacing:-.04em;margin-top:5px}.card-foot{font-size:12px;color:var(--muted);margin-top:4px}.accent-blue{border-top:4px solid var(--blue)}.accent-amber{border-top:4px solid #f59e0b}.accent-green{border-top:4px solid #22c55e}.accent-purple{border-top:4px solid var(--purple)}
+.alerts{display:grid;gap:9px}.alert{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:12px;border:1px solid}.alert strong{display:block}.alert small{display:block;margin-top:2px;opacity:.85}.alert.red{background:var(--red-soft);border-color:#fecaca;color:#991b1b}.alert.amber{background:var(--amber-soft);border-color:#fde68a;color:#92400e}.alert.blue{background:var(--blue-soft);border-color:#bfdbfe;color:#1e40af}.alert.green{background:var(--green-soft);border-color:#bbf7d0;color:#166534}.empty{color:var(--muted);padding:14px;text-align:center;border:1px dashed var(--line);border-radius:10px}
+.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.field{display:flex;align-items:center;gap:8px;color:#475569;font-weight:700}.field select,.field input{font:inherit;border:1px solid #cbd5e1;border-radius:9px;padding:9px 12px;background:white;color:var(--ink);min-width:180px}.button{border:0;background:#1d4ed8;color:white;padding:10px 14px;border-radius:9px;font-weight:800;cursor:pointer}.button:hover{background:#1e40af}.note{font-size:12px;color:var(--muted)}
+.gantt-shell{overflow:auto;border:1px solid var(--line);border-radius:12px}.gantt{min-width:1000px}.gantt-head,.gantt-row{display:grid;grid-template-columns:250px 1fr}.gantt-head{background:#f8fafc;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}.task-label{padding:10px 12px;border-right:1px solid var(--line);font-weight:800;font-size:12px}.axis{display:grid;grid-auto-columns:minmax(34px,1fr);grid-auto-flow:column}.day{padding:8px 2px;text-align:center;border-right:1px solid #edf2f7;font-size:10px;color:#64748b}.day.weekend{background:#f1f5f9}.gantt-row{min-height:48px;border-bottom:1px solid #edf2f7}.gantt-row:last-child{border-bottom:0}.task-label .task-name{font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.task-label .task-meta{font-size:11px;color:var(--muted);margin-top:2px}.timeline{position:relative;display:grid;grid-auto-columns:minmax(34px,1fr);grid-auto-flow:column;background-image:linear-gradient(to right,#edf2f7 1px,transparent 1px);background-size:calc(100% / var(--days)) 100%}.timeline .weekend-bg{background:#f8fafc}.bar{position:absolute;top:13px;height:22px;border-radius:7px;background:#3b82f6;box-shadow:0 2px 4px #1d4ed822;min-width:6px;overflow:hidden}.bar.wait{background:#f59e0b}.bar.done{background:#16a34a}.bar-label{position:absolute;top:14px;left:8px;color:white;font-size:10px;font-weight:800;white-space:nowrap;pointer-events:none}.milestone{position:absolute;top:6px;transform:translateX(-50%);font-size:16px;z-index:1;filter:drop-shadow(0 1px 1px white)}.today-line{position:absolute;top:0;bottom:0;width:2px;background:#ef4444;z-index:1;opacity:.8}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}table{border-collapse:collapse;width:100%;min-width:720px;background:white}th,td{padding:11px 12px;text-align:left;border-bottom:1px solid #edf2f7;vertical-align:top}th{font-size:11px;text-transform:none;letter-spacing:.02em;color:#64748b;background:#f8fafc;font-weight:800;white-space:nowrap}td{font-size:13px}tbody tr:last-child td{border-bottom:0}tbody tr:hover{background:#f8fafc}.badge{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;white-space:nowrap}.b-blue{background:var(--blue-soft);color:#1d4ed8}.b-amber{background:var(--amber-soft);color:#92400e}.b-green{background:var(--green-soft);color:#166534}.b-red{background:var(--red-soft);color:#991b1b}.b-purple{background:var(--purple-soft);color:#6d28d9}.status-grid{grid-template-columns:1fr 1fr}.status-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.status-title h3{margin:0;font-size:16px}.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted)}.legend span{display:inline-flex;align-items:center;gap:5px}.dot{width:9px;height:9px;border-radius:3px;display:inline-block}
+footer{padding:24px 4px 8px;color:var(--muted);font-size:11px;text-align:center}
+@media(max-width:900px){.wrap{padding:14px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.status-grid{grid-template-columns:1fr}.gantt-head,.gantt-row{grid-template-columns:190px 1fr}.card-value{font-size:27px}.hero{padding:22px}}
+@media(max-width:480px){.cards{grid-template-columns:1fr 1fr;gap:8px}.card{padding:13px}.card-value{font-size:24px}.field{align-items:flex-start;flex-direction:column}.field select{min-width:0;width:100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">Engineering Operations · Dashboard</div>
+  <h1>設計スケジュール・負荷＆進捗管理</h1>
+  <p>設計日程、マイルストーン、担当者別の日次負荷をひとつの画面で可視化します。</p>
+  <div class="hero-meta"><span class="pill">📅 基準日：<span id="todayLabel">—</span></span><span class="pill">📌 標準稼働：7.5 h / 日</span><span class="pill">🧩 インラインデータ・外部依存なし</span></div>
+</header>
+
+<section class="section">
+  <div class="section-head"><div><h2>📤 データ出力日リマインド</h2><div class="sub">本日を基準に期限超過・当日・3日以内のタスクを表示</div></div></div>
+  <div class="panel"><div class="alerts" id="reminders"></div></div>
+</section>
+
+<section class="section">
+  <div class="section-head"><div><h2>🚨 設計日程超過アラート</h2><div class="sub">設計完了日を過ぎていて、ステータスが「完了」になっていないアイテム</div></div></div>
+  <div class="panel"><div class="alerts" id="scheduleOverdue"></div></div>
+</section>
+
+<section class="section">
+  <div class="section-head"><div><h2>ステータス概要</h2><div class="sub">現在のフィルター条件に一致するタスクを集計</div></div></div>
+  <div class="grid cards">
+    <div class="card accent-blue"><div class="card-label">表示中の設計アイテム</div><div class="card-value" id="totalCount">0</div><div class="card-foot">フィルター適用後</div></div>
+    <div class="card accent-amber"><div class="card-label">仕掛中</div><div class="card-value" id="workingCount">0</div><div class="card-foot">進行中のアイテム</div></div>
+    <div class="card accent-purple"><div class="card-label">依頼待ち</div><div class="card-value" id="waitingCount">0</div><div class="card-foot">着手前・依頼待ち</div></div>
+    <div class="card accent-green"><div class="card-label">期限内のデータ出力</div><div class="card-value" id="upcomingCount">0</div><div class="card-foot">本日〜3日以内</div></div>
+    <div class="card accent-amber"><div class="card-label">設計日程超過・未完了</div><div class="card-value" id="scheduleOverdueCount">0</div><div class="card-foot">設計完了日を超過</div></div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><div><h2>表示条件</h2><div class="sub">担当者1・担当者2のどちらかに選択メンバーが含まれるタスクを表示します。</div></div></div>
+  <div class="panel toolbar">
+    <label class="field" for="personFilter">担当者フィルター
+      <select id="personFilter"><option value="">全担当者</option></select>
+    </label>
+    <label class="field" for="rangeDays">ガント・負荷表示期間
+      <select id="rangeDays"><option value="14">14日間</option><option value="30" selected>30日間</option><option value="60">60日間</option><option value="90">90日間</option></select>
+    </label>
+    <button class="button" id="resetBtn" type="button">条件をリセット</button>
+    <span class="note">※ サンプルデータを編集する場合は、HTML内の <code>tasks</code> 配列を変更してください。</span>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><div><h2>ガントチャート（タイムライン）</h2><div class="sub" id="ganttRange">設計開始日〜設計完了日を表示。🔍 検図日 ／ 📤 データ出力日</div></div>
+  <div class="legend"><span><i class="dot" style="background:#3b82f6"></i>仕掛中</span><span><i class="dot" style="background:#f59e0b"></i>依頼待ち</span><span>🔍 検図日</span><span>📤 データ出力日</span></div></div>
+  <div class="panel"><div class="gantt-shell"><div class="gantt" id="gantt"></div></div></div>
+</section>
+
+<section class="section">
+  <div class="section-head"><div><h2>日別・担当者別 負荷率</h2><div class="sub">担当者ごとの日割り工数を合算し、標準稼働時間7.5時間に対する負荷率を算出します。</div></div></div>
+  <div class="panel"><div class="table-wrap"><table><thead><tr><th>日付</th><th>曜日</th><th>担当者</th><th>合計工数</th><th>標準稼働</th><th>負荷率</th><th>判定</th></tr></thead><tbody id="loadTable"></tbody></table></div><div class="note" style="margin-top:10px">判定基準：正常 〜80% ／ 中負荷 80%超〜100% ／ 高負荷 100%超。表示期間中に工数がある日だけ表示します。</div></div>
+</section>
+
+<section class="section">
+  <div class="section-head"><div><h2>👥 担当者別・期間トータル負荷率</h2><div class="sub">表示期間内の合計工数 ÷ 期間標準工数で算出</div></div></div>
+  <div class="panel"><div class="table-wrap"><table><thead><tr><th>担当者</th><th>期間内の合計工数</th><th>期間標準工数</th><th>期間トータル負荷率</th><th>判定</th><th>最大日別負荷率</th></tr></thead><tbody id="totalLoadTable"></tbody></table></div>
+  <div class="note" style="margin-top:10px">計算方法：期間内の合計工数 ÷（表示期間の日数 × 7.5時間）× 100%。休日も含む暦日ベースです。</div></div>
+</section>
+
+<section class="section">
+  <div class="section-head"><div><h2>ステータス別アイテム一覧</h2><div class="sub">担当者フィルターと連動します。</div></div></div>
+  <div class="grid status-grid">
+    <div class="panel"><div class="status-title"><h3>🔵 仕掛中アイテム一覧</h3><span class="badge b-blue" id="workingBadge">0件</span></div><div class="table-wrap"><table><thead><tr><th>設計タイトル</th><th>担当者</th><th>設計期間</th><th>検図日</th><th>データ出力日</th></tr></thead><tbody id="workingTable"></tbody></table></div></div>
+    <div class="panel"><div class="status-title"><h3>🟠 依頼待ちアイテム一覧</h3><span class="badge b-amber" id="waitingBadge">0件</span></div><div class="table-wrap"><table><thead><tr><th>設計タイトル</th><th>担当者</th><th>設計期間</th><th>検図日</th><th>データ出力日</th></tr></thead><tbody id="waitingTable"></tbody></table></div></div>
+  </div>
+</section>
+<footer>設計スケジュール・負荷＆進捗管理ダッシュボード · 単一HTML · 外部通信なし</footer>
+</div>
+
+<script>
+"use strict";
+/*
+ * サンプルデータ編集ガイド：
+ * 日付は YYYY-MM-DD、日割り工数は各担当者が設計期間中に毎日投入する想定の時間です。
+ * 実データに置き換える際は tasks 配列の各オブジェクトを編集してください。
+ */
+const STANDARD_HOURS = 7.5;
+const tasks = [
+ {id:1,title:"制御基板 A版 回路設計",start:"2026-10-08",end:"2026-10-16",review:"2026-10-14",output:"2026-10-19",person1:"佐藤",person2:"鈴木",hours1:3.5,hours2:2,status:"仕掛中"},
+ {id:2,title:"電源基板 B版 設計変更",start:"2026-10-10",end:"2026-10-20",review:"2026-10-17",output:"2026-10-21",person1:"鈴木",person2:"高橋",hours1:2.5,hours2:1.5,status:"仕掛中"},
+ {id:3,title:"センサー基板 新規設計",start:"2026-10-12",end:"2026-10-23",review:"2026-10-22",output:"2026-10-26",person1:"田中",person2:"佐藤",hours1:4,hours2:1,status:"依頼待ち"},
+ {id:4,title:"通信基板 部品変更対応",start:"2026-10-06",end:"2026-10-13",review:"2026-10-12",output:"2026-10-10",person1:"高橋",person2:"",hours1:5,hours2:0,status:"仕掛中"},
+ {id:5,title:"評価用アダプタ基板",start:"2026-10-15",end:"2026-10-29",review:"2026-10-27",output:"2026-10-30",person1:"佐藤",person2:"田中",hours1:2,hours2:2,status:"依頼待ち"},
+ {id:6,title:"量産基板 C版 データ更新",start:"2026-10-09",end:"2026-10-15",review:"2026-10-14",output:"2026-10-12",person1:"鈴木",person2:"",hours1:3,hours2:0,status:"仕掛中"},
+ {id:7,title:"I/O基板 部品表・配線見直し",start:"2026-10-20",end:"2026-11-03",review:"2026-10-30",output:"2026-11-05",person1:"高橋",person2:"田中",hours1:2.5,hours2:2.5,status:"依頼待ち"},
+ {id:8,title:"試作基板 D版 設計レビュー",start:"2026-10-11",end:"2026-10-18",review:"2026-10-16",output:"2026-10-20",person1:"田中",person2:"鈴木",hours1:3,hours2:2,status:"仕掛中"}
+];
+
+const $ = id => document.getElementById(id);
+const parseDate = s => { if(!s) return null; const p=s.split("-").map(Number); return new Date(p[0],p[1]-1,p[2],12,0,0,0); };
+const fmt = d => { if(!d) return "—"; return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const addDays = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const diffDays = (a,b) => Math.round((Date.UTC(b.getFullYear(),b.getMonth(),b.getDate())-Date.UTC(a.getFullYear(),a.getMonth(),a.getDate()))/86400000);
+const weekday = d => ["日","月","火","水","木","金","土"][d.getDay()];
+const escapeHTML = s => String(s ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const today = new Date(); today.setHours(12,0,0,0);
+$("todayLabel").textContent=fmt(today);
+
+function getPeople(){ return [...new Set(tasks.flatMap(t=>[t.person1,t.person2]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja")); }
+function initFilter(){ const sel=$("personFilter"); getPeople().forEach(p=>{const o=document.createElement("option");o.value=p;o.textContent=p;sel.appendChild(o);}); }
+function visibleTasks(){const p=$("personFilter").value;return tasks.filter(t=>!p||t.person1===p||t.person2===p);}
+function isWithinTask(t,d){const s=parseDate(t.start),e=parseDate(t.end);return s&&e&&d>=s&&d<=e;}
+function taskHours(t,person){if(person===t.person1 && person===t.person2)return (Number(t.hours1)||0)+(Number(t.hours2)||0);if(person===t.person1)return Number(t.hours1)||0;if(person===t.person2)return Number(t.hours2)||0;return 0;}
+function statusBadge(status){return status==="仕掛中"?'<span class="badge b-blue">仕掛中</span>':status==="依頼待ち"?'<span class="badge b-amber">依頼待ち</span>':'<span class="badge b-purple">'+escapeHTML(status)+'</span>';}
+
+function renderReminders(list){
+ const box=$("reminders"),items=[];
+ list.forEach(t=>{if(!t.output)return;const d=diffDays(today,parseDate(t.output));if(d<0)items.push({t,d,kind:"red",label:"期限超過",msg:"データ出力日を"+Math.abs(d)+"日超過しています。"});else if(d===0)items.push({t,d,kind:"red",label:"本日期限",msg:"データ出力日が本日です。"});else if(d<=3)items.push({t,d,kind:"amber",label:"期限間近",msg:"データ出力まで残り"+d+"日です。"});});
+ items.sort((a,b)=>a.d-b.d);
+ if(!items.length){box.innerHTML='<div class="alert green"><span>✓</span><div><strong>リマインド対象はありません</strong><small>期限超過・本日期限・3日以内のデータ出力タスクはありません。</small></div></div>';return;}
+ box.innerHTML=items.map(({t,d,kind,label,msg})=>'<div class="alert '+kind+'"><span>'+(kind==="red"?"⚠️":"⏳")+'</span><div style="flex:1"><strong>'+escapeHTML(label)+'：'+escapeHTML(t.title)+'</strong><small>'+escapeHTML(msg)+' データ出力日：'+escapeHTML(t.output)+' · '+escapeHTML(t.person1)+(t.person2?" / "+escapeHTML(t.person2):"")+'</small></div>'+statusBadge(t.status)+'</div>').join("");
+}
+function renderScheduleOverdue(list){
+ const items=list.filter(t=>t.status!=="完了"&&t.end&&parseDate(t.end)<today)
+   .map(t=>({...t,lateDays:Math.abs(diffDays(parseDate(t.end),today))})).sort((a,b)=>b.lateDays-a.lateDays);
+ $("scheduleOverdueCount").textContent=items.length;
+ const box=$("scheduleOverdue");
+ if(!items.length){box.innerHTML='<div class="alert green"><span>✓</span><div><strong>設計日程超過の未完了案件はありません</strong><small>完了予定日を過ぎた未完了案件はありません。</small></div></div>';return;}
+ box.innerHTML=items.map(t=>'<div class="alert red"><span>🚨</span><div style="flex:1"><strong>'+escapeHTML(t.title)+'</strong><small>設計完了予定日：'+escapeHTML(t.end)+' · '+t.lateDays+'日超過 · 担当：'+escapeHTML(t.person1)+(t.person2?" / "+escapeHTML(t.person2):"")+'</small></div>'+statusBadge(t.status)+'</div>').join("");
+}
+function renderCards(list){$("totalCount").textContent=list.length;$("workingCount").textContent=list.filter(t=>t.status==="仕掛中").length;$("waitingCount").textContent=list.filter(t=>t.status==="依頼待ち").length;$("upcomingCount").textContent=list.filter(t=>t.output&&diffDays(today,parseDate(t.output))>=0&&diffDays(today,parseDate(t.output))<=3).length;}
+
+function renderTotalLoad(list){
+ const days=Number($("rangeDays").value)||30, start=new Date(today);
+ start.setDate(start.getDate()-Math.min(3,Math.floor(days*.1)));
+ const people=$("personFilter").value?[$("personFilter").value]:getPeople();
+ const rows=people.map(person=>{
+  let total=0,maxDaily=0;
+  for(let i=0;i<days;i++){const d=addDays(start,i);let daily=0;list.forEach(t=>{if(isWithinTask(t,d))daily+=taskHours(t,person);});total+=daily;maxDaily=Math.max(maxDaily,daily/STANDARD_HOURS*100);}
+  const capacity=days*STANDARD_HOURS;return {person,total,capacity,rate:total/capacity*100,maxDaily};
+ });
+ $("totalLoadTable").innerHTML=rows.length?rows.map(r=>{
+  const level=r.rate>100?["高負荷","b-red"]:r.rate>80?["中負荷","b-amber"]:["正常","b-green"];
+  return '<tr><td><strong>'+escapeHTML(r.person)+'</strong></td><td>'+r.total.toFixed(1)+' h</td><td>'+r.capacity.toFixed(1)+' h</td><td><strong>'+Math.round(r.rate)+'%</strong><div style="height:5px;background:#e2e8f0;border-radius:9px;margin-top:5px;min-width:90px"><div style="height:5px;width:'+Math.min(100,r.rate)+'%;background:'+(r.rate>100?'#ef4444':r.rate>80?'#f59e0b':'#22c55e')+';border-radius:9px"></div></div></td><td><span class="badge '+level[1]+'">'+level[0]+'</span></td><td>'+Math.round(r.maxDaily)+'%</td></tr>';
+ }).join(""):'<tr><td colspan="6" class="empty">集計対象の担当者がいません。</td></tr>';
+}
+
+function renderGantt(list){
+ const days=Number($("rangeDays").value)||30;const start=new Date(today);start.setDate(start.getDate()-Math.min(3,Math.floor(days*.1)));const end=addDays(start,days-1);
+ $("ganttRange").textContent=fmt(start)+" 〜 "+fmt(end)+"（"+days+"日間）";
+ const axis=[];for(let i=0;i<days;i++)axis.push(addDays(start,i));
+ let out='<div class="gantt-head"><div class="task-label">設計アイテム / 担当者</div><div class="axis">'+axis.map(d=>'<div class="day '+([0,6].includes(d.getDay())?'weekend':'')+'">'+(d.getDate())+'日<br>'+weekday(d)+'</div>').join("")+'</div></div>';
+ if(!list.length){$("gantt").innerHTML=out+'<div class="empty">表示するタスクがありません。</div>';return;}
+ list.forEach(t=>{
+  const s=parseDate(t.start),e=parseDate(t.end);const left=Math.max(0,diffDays(start,s));const right=Math.min(days-1,diffDays(start,e));const intersects=e>=start&&s<=end;
+  let bar="";if(intersects){const l=Math.max(0,diffDays(start,s)),r=Math.min(days-1,diffDays(start,e));const width=Math.max(1,r-l+1);bar='<div class="bar '+(t.status==="依頼待ち"?"wait":"")+'" style="left:'+(l/days*100)+'%;width:'+(width/days*100)+'%"></div><div class="bar-label" style="left:'+(l/days*100)+'%">'+escapeHTML(t.status)+'</div>';}
+  const milestone=(date,icon)=>{if(!date)return "";const d=parseDate(date),idx=diffDays(start,d);return idx<0||idx>=days?"":'<span class="milestone" title="'+escapeHTML(icon==="🔍"?"検図日":"データ出力日")+' '+escapeHTML(date)+'" style="left:'+((idx+.5)/days*100)+'%">'+icon+'</span>';};
+  out+='<div class="gantt-row"><div class="task-label"><div class="task-name" title="'+escapeHTML(t.title)+'">'+escapeHTML(t.title)+'</div><div class="task-meta">'+escapeHTML(t.person1)+(t.person2?" / "+escapeHTML(t.person2):"")+'</div></div><div class="timeline" style="--days:'+days+'">'+bar+milestone(t.review,"🔍")+milestone(t.output,"📤")+'</div></div>';
+ });
+ $("gantt").innerHTML=out;
+}
+
+function renderLoad(list){
+ const days=Number($("rangeDays").value)||30;const start=new Date(today);start.setDate(start.getDate()-Math.min(3,Math.floor(days*.1)));const people=$("personFilter").value?[ $("personFilter").value ]:getPeople();const rows=[];
+ for(let i=0;i<days;i++){const d=addDays(start,i);people.forEach(person=>{let hours=0;list.forEach(t=>{if(isWithinTask(t,d))hours+=taskHours(t,person);});if(hours>0)rows.push({d,person,hours,rate:hours/STANDARD_HOURS*100});});}
+ rows.sort((a,b)=>a.d-b.d||a.person.localeCompare(b.person,"ja"));
+ $("loadTable").innerHTML=rows.length?rows.map(r=>{const level=r.rate>100?["高負荷","b-red"]:r.rate>80?["中負荷","b-amber"]:["正常","b-green"];return '<tr><td>'+fmt(r.d)+'</td><td>'+weekday(r.d)+'</td><td>'+escapeHTML(r.person)+'</td><td><strong>'+r.hours.toFixed(1)+' h</strong></td><td>'+STANDARD_HOURS.toFixed(1)+' h</td><td><strong>'+Math.round(r.rate)+'%</strong><div style="height:5px;background:#e2e8f0;border-radius:9px;margin-top:5px;min-width:70px"><div style="height:5px;width:'+Math.min(100,r.rate)+'%;background:'+(r.rate>100?'#ef4444':r.rate>80?'#f59e0b':'#22c55e')+';border-radius:9px"></div></div></td><td><span class="badge '+level[1]+'">'+level[0]+'</span></td></tr>';}).join(""):'<tr><td colspan="7" class="empty">表示期間内に工数がある担当者・日付はありません。</td></tr>';
+}
+function renderStatusTable(list,status,target){
+ const items=list.filter(t=>t.status===status);$(target).innerHTML=items.length?items.map(t=>'<tr><td><strong>'+escapeHTML(t.title)+'</strong><div style="margin-top:4px">'+statusBadge(t.status)+'</div></td><td>'+escapeHTML(t.person1)+(t.person2?"<br>"+escapeHTML(t.person2):"")+'</td><td>'+escapeHTML(t.start)+'<br>〜 '+escapeHTML(t.end)+'</td><td>'+escapeHTML(t.review||"—")+'</td><td>'+escapeHTML(t.output||"—")+'</td></tr>').join(""):'<tr><td colspan="5" class="empty">該当するアイテムはありません。</td></tr>';
+}
+function render(){const list=visibleTasks();renderReminders(list);renderScheduleOverdue(list);renderCards(list);renderGantt(list);renderLoad(list);renderTotalLoad(list);renderStatusTable(list,"仕掛中","workingTable");renderStatusTable(list,"依頼待ち","waitingTable");$("workingBadge").textContent=list.filter(t=>t.status==="仕掛中").length+"件";$("waitingBadge").textContent=list.filter(t=>t.status==="依頼待ち").length+"件";}
+initFilter();render();
+$("personFilter").addEventListener("change",render);$("rangeDays").addEventListener("change",render);
+$("resetBtn").addEventListener("click",()=>{$("personFilter").value="";$("rangeDays").value="30";render();});
+</script>
+</body>
+</html>
