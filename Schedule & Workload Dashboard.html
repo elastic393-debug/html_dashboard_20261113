@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>設計スケジュール & 負荷＆進捗管理ダッシュボード</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-7xl mx-auto space-y-8">
+        
+        <!-- ヘッダー -->
+        <div>
+            <h1 class="text-2xl font-bold mb-1 text-gray-800">📊 設計スケジュール・負荷＆進捗管理ダッシュボード</h1>
+            <p class="text-sm text-gray-500">タイムライン（土日祝除外）、負荷率ヒートマップ、超過要警戒案件、ステータス一覧</p>
+        </div>
+
+        <!-- 🚀 1. アラート＆リマインドセクション -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- 日程超過・要警戒案件（設計完了日順） -->
+            <div class="bg-white p-5 rounded-lg shadow-sm border-l-4 border-red-500">
+                <h2 class="text-md font-bold text-gray-800 mb-3 flex items-center justify-between">
+                    <span>🚨 日程超過・未完了の要警戒案件</span>
+                    <span id="count-overdue-alert" class="bg-red-100 text-red-800 text-xs px-2 py-0.5 rounded-full font-bold">0件</span>
+                </h2>
+                <div id="alert-overdue" class="space-y-2 text-sm text-gray-600 max-h-40 overflow-y-auto">
+                    <!-- 動的生成 -->
+                </div>
+            </div>
+
+            <!-- データ出力日 リマインド（出力日順） -->
+            <div class="bg-white p-5 rounded-lg shadow-sm border-l-4 border-amber-500">
+                <h2 class="text-md font-bold text-gray-800 mb-3 flex items-center">
+                    <span>⏰ データ出力日 リマインド（期限近・超過）</span>
+                </h2>
+                <div id="reminder-output" class="space-y-2 text-sm text-gray-600 max-h-40 overflow-y-auto">
+                    <!-- 動的生成 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 📋 ステータス別アイテムリスト（仕掛中 ＆ 依頼待ち） -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- 仕掛中アイテム一覧 -->
+            <div class="bg-white shadow-md rounded-lg p-6">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center">
+                    <span class="w-3 h-3 bg-indigo-500 rounded-full mr-2"></span>
+                    仕掛中アイテム一覧 <span id="count-inprogress-badge" class="ml-2 text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">0件</span>
+                </h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">管理/案件名</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">期間</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">担当者</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inprogress-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 依頼待ちアイテム一覧 -->
+            <div class="bg-white shadow-md rounded-lg p-6">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center">
+                    <span class="w-3 h-3 bg-yellow-400 rounded-full mr-2"></span>
+                    依頼待ちアイテム一覧 <span id="count-waiting-badge" class="ml-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">0件</span>
+                </h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">管理/案件名</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">出力予定日</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">担当者</th>
+                            </tr>
+                        </thead>
+                        <tbody id="waiting-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ステータス概要カード -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-white p-4 rounded-lg shadow-sm border-t-4 border-indigo-500 text-center">
+                <div class="text-xs text-gray-500 font-semibold">仕掛中アイテム数</div>
+                <div id="count-in-progress" class="text-2xl font-bold text-indigo-700 mt-1">0</div>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-sm border-t-4 border-yellow-500 text-center">
+                <div class="text-xs text-gray-500 font-semibold">依頼待ちアイテム数</div>
+                <div id="count-waiting" class="text-2xl font-bold text-yellow-700 mt-1">0</div>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-sm border-t-4 border-green-500 text-center">
+                <div class="text-xs text-gray-500 font-semibold">完了アイテム数</div>
+                <div id="count-completed" class="text-2xl font-bold text-green-700 mt-1">0</div>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-sm border-t-4 border-gray-400 text-center">
+                <div class="text-xs text-gray-500 font-semibold">総案件数</div>
+                <div id="count-total" class="text-2xl font-bold text-gray-700 mt-1">0</div>
+            </div>
+        </div>
+
+        <!-- フィルター・コントロールパネル -->
+        <div class="bg-white p-4 rounded-lg shadow-sm flex items-center space-x-4">
+            <label for="staff-filter" class="text-sm font-semibold text-gray-700">👤 担当者フィルター:</label>
+            <select id="staff-filter" class="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="ALL">全員（すべて表示）</option>
+            </select>
+        </div>
+
+        <!-- 凡例 -->
+        <div class="flex items-center space-x-6 text-xs text-gray-600 bg-white p-3 rounded-lg shadow-sm">
+            <div class="flex items-center"><span class="w-3 h-3 bg-indigo-500 rounded mr-2"></span>設計期間バー（平日のみ）</div>
+            <div class="flex items-center"><span class="text-amber-500 font-bold mr-1">🔍</span>検図日</div>
+            <div class="flex items-center"><span class="text-emerald-500 font-bold mr-1">📤</span>データ出力日</div>
+        </div>
+
+        <!-- 📅 ガントチャート表示エリア -->
+        <div class="bg-white shadow-md rounded-lg p-6 overflow-x-auto">
+            <h2 class="text-lg font-semibold text-gray-700 mb-4">📅 スケジュール タイムライン（土日祝日除く・設計開始日順）</h2>
+            <div id="gantt-chart" class="min-w-[900px]"></div>
+        </div>
+
+        <!-- 🔥 平日別・担当者別 負荷率ヒートマップ -->
+        <div class="bg-white shadow-md rounded-lg p-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-700">🔥 平日別・担当者別 負荷率ヒートマップ</h2>
+                    <p class="text-xs text-gray-400">※ 標準稼働 7.5h に対する負荷率を色分け表示（緑: 正常 $\le 60\%$, 黄: 中負荷 $\le 100\%$, 赤: 高負荷 $> 100\%$ または 4h超）</p>
+                </div>
+                <!-- ヒートマップ凡例 -->
+                <div class="flex items-center space-x-2 text-xs">
+                    <span class="px-2 py-1 bg-green-100 text-green-800 rounded font-medium">余裕 ($\le 60\%$)</span>
+                    <span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded font-medium">注意 ($\le 100\%$)</span>
+                    <span class="px-2 py-1 bg-red-100 text-red-800 rounded font-medium">過負荷 ($> 100\%$)</span>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <div id="heatmap-container" class="min-w-[800px]">
+                    <!-- JavaScriptでマトリクス状のヒートマップが描画されます -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ==========================================
+        // サンプルデータ
+        // ==========================================
+        const scheduleData = [
+            {
+                "NO": "PRJ-001", "DEPT": "開発第一部", "BU": "ユニットA", "ITEM": "電動パワートレイン基本設計", "STATUS": "仕掛中",
+                "MEMBER1": "山田 太郎", "MEMBER2": "佐藤 次郎", "MEMBER3": "鈴木 花子",
+                "PREDAY1": 3.0, "PREDAY2": 2.5, "PREDAY3": 1.0,
+                "C-CODE": "C-1001", "AA_START": "2026-10-01", "AA_END": "2026-10-15", "AA_CHECK": "2026-10-16", "OUTPUT_DAY": "2026-10-18"
+            },
+            {
+                "NO": "PRJ-002", "DEPT": "開発第二部", "BU": "ユニットB", "ITEM": "インバーター詳細設計", "STATUS": "依頼待ち",
+                "MEMBER1": "山田 太郎", "MEMBER2": "高橋 健", "MEMBER3": "",
+                "PREDAY1": 2.0, "PREDAY2": 3.0, "PREDAY3": 0,
+                "C-CODE": "C-1002", "AA_START": "2026-10-05", "AA_END": "2026-10-25", "AA_CHECK": "2026-10-26", "OUTPUT_DAY": "2026-10-28"
+            },
+            {
+                "NO": "PRJ-003", "DEPT": "開発第一部", "BU": "ユニットA", "ITEM": "駆動制御ユニット機構設計", "STATUS": "仕掛中",
+                "MEMBER1": "佐藤 次郎", "MEMBER2": "鈴木 花子", "MEMBER3": "",
+                "PREDAY1": 4.0, "PREDAY2": 2.0, "PREDAY3": 0,
+                "C-CODE": "C-1003", "AA_START": "2026-09-15", "AA_END": "2026-09-30", "AA_CHECK": "2026-10-01", "OUTPUT_DAY": "2026-10-03" // 超過案件
+            },
+            {
+                "NO": "PRJ-004", "DEPT": "生産技術部", "BU": "ユニットC", "ITEM": "組立ライン治具設計", "STATUS": "完了",
+                "MEMBER1": "渡辺 謙", "MEMBER2": "高橋 健", "MEMBER3": "",
+                "PREDAY1": 3.5, "PREDAY2": 2.0, "PREDAY3": 0,
+                "C-CODE": "C-1004", "AA_START": "2026-09-01", "AA_END": "2026-09-10", "AA_CHECK": "2026-09-11", "OUTPUT_DAY": "2026-09-12"
+            },
+            {
+                "NO": "PRJ-005", "DEPT": "開発第二部", "BU": "ユニットB", "ITEM": "バッテリー冷却回路設計", "STATUS": "仕掛中",
+                "MEMBER1": "鈴木 花子", "MEMBER2": "渡辺 謙", "MEMBER3": "山田 太郎",
+                "PREDAY1": 2.5, "PREDAY2": 2.5, "PREDAY3": 2.0,
+                "C-CODE": "C-1005", "AA_START": "2026-09-20", "AA_END": "2026-10-10", "AA_CHECK": "2026-10-11", "OUTPUT_DAY": "2026-10-12" // 超過案件
+            }
+        ];
+
+        const STANDARD_HOURS = 7.5;
+
+        function parseLocalDate(dateStr) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        }
+
+        function formatDateStr(dateObj) {
+            const y = dateObj.getFullYear();
+            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dateObj.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function isHolidaysOrWeekend(dateStr) {
+            const dt = parseLocalDate(dateStr);
+            const dayOfWeek = dt.getDay();
+            if (dayOfWeek === 0 || dayOfWeek === 6) return true;
+
+            const holidays2026 = [
+                "2026-01-01", "2026-01-12", "2026-02-11", "2026-02-23", "2026-03-20",
+                "2026-04-29", "2026-05-03", "2026-05-04", "2026-05-05", "2026-05-06",
+                "2026-07-20", "2026-08-11", "2026-09-21", "2026-09-22", "2026-09-23",
+                "2026-10-12", "2026-11-03", "2026-11-23"
+            ];
+            return holidays2026.includes(dateStr);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initFilters(scheduleData);
+            renderDashboard(scheduleData, 'ALL');
+            document.getElementById('staff-filter').addEventListener('change', updateView);
+        });
+
+        function updateView() {
+            const selectedStaff = document.getElementById('staff-filter').value;
+            renderDashboard(scheduleData, selectedStaff);
+        }
+
+        function initFilters(data) {
+            const staffSet = new Set();
+            data.forEach(row => {
+                if (row['MEMBER1']) staffSet.add(row['MEMBER1'].trim());
+                if (row['MEMBER2']) staffSet.add(row['MEMBER2'].trim());
+                if (row['MEMBER3']) staffSet.add(row['MEMBER3'].trim());
+            });
+
+            const staffSelect = document.getElementById('staff-filter');
+            staffSet.forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name; opt.textContent = name;
+                staffSelect.appendChild(opt);
+            });
+        }
+
+        function getWeekdayRange(startDateStr, endDateStr) {
+            const arr = [];
+            let dt = parseLocalDate(startDateStr);
+            const endDt = parseLocalDate(endDateStr);
+
+            while (dt <= endDt) {
+                const dateStr = formatDateStr(dt);
+                if (!isHolidaysOrWeekend(dateStr)) {
+                    arr.push(dateStr);
+                }
+                dt.setDate(dt.getDate() + 1);
+            }
+            return arr;
+        }
+
+        function diffWeekdayDays(startStr, targetStr) {
+            let count = 0;
+            let dt = parseLocalDate(startStr);
+            const targetDt = parseLocalDate(targetStr);
+            const step = dt <= targetDt ? 1 : -1;
+            
+            while (formatDateStr(dt) !== targetStr) {
+                dt.setDate(dt.getDate() + step);
+                const dStr = formatDateStr(dt);
+                if (!isHolidaysOrWeekend(dStr)) {
+                    count += step;
+                }
+            }
+            return count;
+        }
+
+        function getTodayStr() {
+            return formatDateStr(new Date());
+        }
+
+        function renderDashboard(data, selectedStaff) {
+            const ganttChartEl = document.getElementById('gantt-chart');
+            const heatmapContainer = document.getElementById('heatmap-container');
+            const inprogressTbody = document.getElementById('inprogress-table-body');
+            const waitingTbody = document.getElementById('waiting-table-body');
+            const reminderEl = document.getElementById('reminder-output');
+            const alertOverdueEl = document.getElementById('alert-overdue');
+
+            let minDate = null;
+            let maxDate = null;
+            const validTasks = [];
+            const dailyWorkload = {};
+            const staffSet = new Set();
+            const todayStr = getTodayStr();
+
+            const reminderList = [];
+            const overdueList = [];
+
+            let inProgressCount = 0;
+            let waitingCount = 0;
+            let completedCount = 0;
+
+            // 1. 全体データの集計・アラート抽出
+            data.forEach(row => {
+                const status = row['STATUS'] || '';
+                const outputDate = row['OUTPUT_DAY'];
+                const endDate = row['AA_END'];
+
+                if (status === '仕掛中') inProgressCount++;
+                else if (status === '依頼待ち') waitingCount++;
+                else if (status === '完了') completedCount++;
+
+                if (row['MEMBER1']) staffSet.add(row['MEMBER1'].trim());
+                if (row['MEMBER2']) staffSet.add(row['MEMBER2'].trim());
+                if (row['MEMBER3']) staffSet.add(row['MEMBER3'].trim());
+
+                if (status !== '完了' && status !== 'キャンセル') {
+                    const targetDate = outputDate || endDate;
+                    if (targetDate && targetDate < todayStr) {
+                        const daysOver = diffWeekdayDays(targetDate, todayStr);
+                        overdueList.push({ ...row, daysOver, targetDate });
+                    }
+                }
+
+                if (outputDate && status !== '完了' && status !== 'キャンセル') {
+                    const diffToOutput = diffWeekdayDays(todayStr, outputDate);
+                    if (diffToOutput <= 3) {
+                        reminderList.push({ title: row['ITEM'], no: row['NO'], cCode: row['C-CODE'], outputDate, diff: diffToOutput });
+                    }
+                }
+            });
+
+            overdueList.sort((a, b) => a.AA_END.localeCompare(b.AA_END));
+            alertOverdueEl.innerHTML = '';
+            document.getElementById('count-overdue-alert').textContent = `${overdueList.length}件`;
+            if (overdueList.length === 0) {
+                alertOverdueEl.innerHTML = `<p class="text-xs text-green-600 font-medium">現在、日程を超過している未完了案件はありません 🎉</p>`;
+            } else {
+                overdueList.forEach(item => {
+                    alertOverdueEl.innerHTML += `
+                        <div class="flex items-center justify-between bg-red-50 px-3 py-2 rounded-md border border-red-100">
+                            <div>
+                                <span class="font-bold text-red-900">[${item.NO}] <span class="text-indigo-600 font-mono text-xs">[${item['C-CODE']}]</span> ${item.ITEM}</span>
+                                <span class="text-xs text-red-600 block">担当: ${[item.MEMBER1, item.MEMBER2, item.MEMBER3].filter(Boolean).join(', ')} (完了期限: ${item.AA_END})</span>
+                            </div>
+                            <span class="px-2 py-0.5 text-xs font-bold rounded bg-red-200 text-red-900 whitespace-nowrap">${item.daysOver}営業日超過</span>
+                        </div>
+                    `;
+                });
+            }
+
+            reminderList.sort((a, b) => a.outputDate.localeCompare(b.outputDate));
+            reminderEl.innerHTML = '';
+            if (reminderList.length === 0) {
+                reminderEl.innerHTML = `<p class="text-xs text-gray-500">直近または超過しているデータ出力日リマインドはありません。</p>`;
+            } else {
+                reminderList.forEach(item => {
+                    let badgeColor = 'bg-amber-100 text-amber-800';
+                    let textMsg = `あと ${item.diff}日 (${item.outputDate})`;
+                    if (item.diff < 0) {
+                        badgeColor = 'bg-red-100 text-red-800';
+                        textMsg = `${Math.abs(item.diff)}日超過 (${item.outputDate})`;
+                    } else if (item.diff === 0) {
+                        badgeColor = 'bg-orange-100 text-orange-800';
+                        textMsg = `【本日】 (${item.outputDate})`;
+                    }
+                    reminderEl.innerHTML += `
+                        <div class="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-md">
+                            <span class="font-medium text-gray-800">[${item.no}] <span class="text-indigo-600 font-mono text-xs">[${item.cCode}]</span> ${item.title}</span>
+                            <span class="px-2 py-0.5 text-xs font-semibold rounded-full ${badgeColor}">📤 ${textMsg}</span>
+                        </div>
+                    `;
+                });
+            }
+
+            document.getElementById('count-in-progress').textContent = inProgressCount;
+            document.getElementById('count-waiting').textContent = waitingCount;
+            document.getElementById('count-completed').textContent = completedCount;
+            document.getElementById('count-total').textContent = data.length;
+
+            // 2. フィルタリングとアイテム抽出
+            const inprogressList = [];
+            const waitingList = [];
+
+            data.forEach(row => {
+                const start = row['AA_START'];
+                const end = row['AA_END'];
+                const reviewDate = row['AA_CHECK'];
+                const outputDate = row['OUTPUT_DAY'];
+                const status = row['STATUS'] || '';
+                
+                const members = [row['MEMBER1'], row['MEMBER2'], row['MEMBER3']].map(m => m ? m.trim() : '');
+                const matchStaff = (selectedStaff === 'ALL' || members.includes(selectedStaff));
+
+                if (!start || !end) return;
+
+                if (!minDate || start < minDate) minDate = start;
+                if (!maxDate || end > maxDate) maxDate = end;
+                if (reviewDate && reviewDate > maxDate) maxDate = reviewDate;
+                if (outputDate && outputDate > maxDate) maxDate = outputDate;
+                if (reviewDate && reviewDate < minDate) minDate = reviewDate;
+                if (outputDate && outputDate < minDate) minDate = outputDate;
+
+                if (matchStaff) {
+                    validTasks.push(row);
+
+                    const staffNames = members.filter(Boolean).join(', ');
+                    if (status === '仕掛中') {
+                        inprogressList.push({ ...row, staffNames });
+                    } else if (status === '依頼待ち') {
+                        waitingList.push({ ...row, staffNames });
+                    }
+                }
+
+                // 負荷集計
+                const m1 = members[0], h1 = parseFloat(row['PREDAY1']) || 0;
+                const m2 = members[1], h2 = parseFloat(row['PREDAY2']) || 0;
+                const m3 = members[2], h3 = parseFloat(row['PREDAY3']) || 0;
+
+                const weekdayRange = getWeekdayRange(start, end);
+                weekdayRange.forEach(dateStr => {
+                    if (!dailyWorkload[dateStr]) dailyWorkload[dateStr] = {};
+                    if (m1 && h1 > 0 && (selectedStaff === 'ALL' || m1 === selectedStaff)) {
+                        dailyWorkload[dateStr][m1] = (dailyWorkload[dateStr][m1] || 0) + h1;
+                    }
+                    if (m2 && h2 > 0 && (selectedStaff === 'ALL' || m2 === selectedStaff)) {
+                        dailyWorkload[dateStr][m2] = (dailyWorkload[dateStr][m2] || 0) + h2;
+                    }
+                    if (m3 && h3 > 0 && (selectedStaff === 'ALL' || m3 === selectedStaff)) {
+                        dailyWorkload[dateStr][m3] = (dailyWorkload[dateStr][m3] || 0) + h3;
+                    }
+                });
+            });
+
+            validTasks.sort((a, b) => a.AA_START.localeCompare(b.AA_START));
+            inprogressList.sort((a, b) => a.AA_START.localeCompare(b.AA_START));
+            waitingList.sort((a, b) => a.AA_START.localeCompare(b.AA_START));
+
+            inprogressTbody.innerHTML = '';
+            waitingTbody.innerHTML = '';
+            document.getElementById('count-inprogress-badge').textContent = `${inprogressList.length}件`;
+            document.getElementById('count-waiting-badge').textContent = `${waitingList.length}件`;
+
+            inprogressList.forEach(item => {
+                inprogressTbody.innerHTML += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-3 py-2 text-gray-900 font-medium">[${item.NO}] <span class="text-indigo-600 font-mono text-xs">[${item['C-CODE']}]</span> ${item.ITEM}</td>
+                        <td class="px-3 py-2 text-gray-500">${item.AA_START} 〜 ${item.AA_END}</td>
+                        <td class="px-3 py-2 text-gray-500">${item.staffNames}</td>
+                    </tr>`;
+            });
+            waitingList.forEach(item => {
+                waitingTbody.innerHTML += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-3 py-2 text-gray-900 font-medium">[${item.NO}] <span class="text-indigo-600 font-mono text-xs">[${item['C-CODE']}]</span> ${item.ITEM}</td>
+                        <td class="px-3 py-2 text-gray-500">${item.OUTPUT_DAY || '-'}</td>
+                        <td class="px-3 py-2 text-gray-500">${item.staffNames}</td>
+                    </tr>`;
+            });
+
+            if (inprogressList.length === 0) inprogressTbody.innerHTML = `<tr><td colspan="3" class="px-3 py-3 text-center text-gray-400 text-xs">該当する仕掛中アイテムはありません。</td></tr>`;
+            if (waitingList.length === 0) waitingTbody.innerHTML = `<tr><td colspan="3" class="px-3 py-3 text-center text-gray-400 text-xs">該当する依頼待ちアイテムはありません。</td></tr>`;
+
+            if (validTasks.length === 0) {
+                ganttChartEl.innerHTML = '<p class="text-gray-500 text-sm">該当するスケジュールデータはありません。</p>';
+                heatmapContainer.innerHTML = '<p class="text-gray-500 text-sm">該当する負荷データはありません。</p>';
+                return;
+            }
+
+            // 3. タイムライン描画
+            const timelineDates = getWeekdayRange(minDate, maxDate);
+            const totalDays = timelineDates.length;
+
+            let headerHtml = `<div class="grid grid-cols-12 mb-2 border-b pb-2 text-xs font-bold text-gray-500">
+                <div class="col-span-3">管理番号 / 案件名</div>
+                <div class="col-span-9 grid" style="grid-template-columns: repeat(${totalDays}, minmax(0, 1fr));">`;
+            
+            timelineDates.forEach((d, idx) => {
+                const parts = d.split('-');
+                const label = `${parseInt(parts[1])}/${parseInt(parts[2])}`;
+                headerHtml += `<div class="text-center truncate text-[10px] ${idx % 2 === 0 ? 'text-gray-700' : 'text-gray-400'}">${label}</div>`;
+            });
+            headerHtml += `</div></div>`;
+
+            let rowsHtml = '';
+            validTasks.forEach((row, index) => {
+                const title = row['ITEM'];
+                const no = row['NO'];
+                const cCode = row['C-CODE'];
+                const start = row['AA_START'];
+                const end = row['AA_END'];
+                const reviewDate = row['AA_CHECK'];
+                const outputDate = row['OUTPUT_DAY'];
+                const staffNames = [row['MEMBER1'], row['MEMBER2'], row['MEMBER3']].filter(Boolean).join(', ');
+
+                const offsetDays = diffWeekdayDays(timelineDates[0], start);
+                const durationDays = diffWeekdayDays(start, end) + 1;
+                const gridStartCol = Math.max(1, offsetDays + 1);
+                const gridSpan = Math.max(1, durationDays);
+
+                const barColor = index % 2 === 0 ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-blue-500 hover:bg-blue-600';
+
+                let milestoneHtml = '';
+                if (reviewDate) {
+                    const reviewCol = diffWeekdayDays(timelineDates[0], reviewDate) + 1;
+                    if (reviewCol >= 1 && reviewCol <= totalDays) {
+                        milestoneHtml += `
+                            <div class="absolute z-10 -top-1 flex flex-col items-center transform -translate-x-1/2" style="grid-column: ${reviewCol}; justify-self: center;" title="検図日: ${reviewDate}">
+                                <span class="bg-amber-100 text-amber-700 border border-amber-300 rounded-full px-1 text-[10px] font-bold shadow-sm">🔍検図</span>
+                            </div>`;
+                    }
+                }
+
+                if (outputDate) {
+                    const outputCol = diffWeekdayDays(timelineDates[0], outputDate) + 1;
+                    if (outputCol >= 1 && outputCol <= totalDays) {
+                        milestoneHtml += `
+                            <div class="absolute z-10 -bottom-1 flex flex-col items-center transform -translate-x-1/2" style="grid-column: ${outputCol}; justify-self: center;" title="データ出力日: ${outputDate}">
+                                <span class="bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-full px-1 text-[10px] font-bold shadow-sm">📤出力</span>
+                            </div>`;
+                    }
+                }
+
+                rowsHtml += `
+                    <div class="grid grid-cols-12 items-center py-3 border-b border-gray-100 text-sm">
+                        <div class="col-span-3 pr-2">
+                            <div class="font-medium text-gray-800 truncate">[${no}] <span class="text-indigo-600 font-mono text-xs">[${cCode}]</span> ${title}</div>
+                            <div class="text-xs text-gray-400">👤 ${staffNames || '-'}</div>
+                        </div>
+                        <div class="col-span-9 grid relative h-10 items-center" style="grid-template-columns: repeat(${totalDays}, minmax(0, 1fr));">
+                            <div class="${barColor} rounded-md h-5 text-white text-[11px] flex items-center px-2 shadow-sm transition-all"
+                                 style="grid-column: ${gridStartCol} / span ${gridSpan};"
+                                 title="${title} (${start} 〜 ${end})">
+                                <span class="truncate">${title}</span>
+                            </div>
+                            ${milestoneHtml}
+                        </div>
+                    </div>
+                `;
+            });
+
+            ganttChartEl.innerHTML = headerHtml + rowsHtml;
+
+            // 4. 平日別・担当者別 負荷率ヒートマップ描画 (マトリクス形式)
+            const sortedDates = timelineDates; // タイムラインと同期した平日軸
+            const targetStaffs = selectedStaff === 'ALL' ? Array.from(staffSet).sort() : [selectedStaff];
+
+            let hmHeader = `<div class="grid mb-2 border-b pb-2 text-xs font-bold text-gray-500" style="grid-template-columns: 140px repeat(${sortedDates.length}, minmax(40px, 1fr));">
+                <div class="px-2">担当者名</div>`;
+            
+            sortedDates.forEach(d => {
+                const parts = d.split('-');
+                hmHeader += `<div class="text-center truncate text-[10px] px-1">${parseInt(parts[1])}/${parseInt(parts[2])}</div>`;
+            });
+            hmHeader += `</div>`;
+
+            let hmRows = '';
+            targetStaffs.forEach(staff => {
+                hmRows += `<div class="grid items-center py-2 border-b border-gray-100 text-xs" style="grid-template-columns: 140px repeat(${sortedDates.length}, minmax(40px, 1fr));">
+                    <div class="px-2 font-medium text-gray-800 truncate">${staff}</div>`;
+
+                sortedDates.forEach(dateStr => {
+                    const hours = (dailyWorkload[dateStr] && dailyWorkload[dateStr][staff]) ? dailyWorkload[dateStr][staff] : 0;
+                    const loadRate = Math.round((hours / STANDARD_HOURS) * 100);
+
+                    // ヒートマップのカラーリング（Tailwindクラス）
+                    let bgColor = 'bg-gray-50 text-gray-400'; // 0h (余裕)
+                    let tooltip = `${staff} (${dateStr}): 0h (0%)`;
+
+                    if (hours > 0) {
+                        tooltip = `${staff} (${dateStr}): ${hours}h (${loadRate}%)`;
+                        if (loadRate > 100 || hours > 4.0) {
+                            bgColor = 'bg-red-500 text-white font-bold'; // 高負荷 (>100% または 4h超)
+                        } else if (loadRate > 60) {
+                            bgColor = 'bg-yellow-300 text-yellow-900 font-medium'; // 中負荷 (>60%)
+                        } else {
+                            bgColor = 'bg-green-200 text-green-900'; // 正常・余裕 (<=60%)
+                        }
+                    }
+
+                    hmRows += `<div class="text-center py-1.5 mx-0.5 rounded text-[11px] ${bgColor} transition-all cursor-default" title="${tooltip}">
+                        ${hours > 0 ? loadRate + '%' : '-'}
+                    </div>`;
+                });
+
+                hmRows += `</div>`;
+            });
+
+            heatmapContainer.innerHTML = hmHeader + hmRows;
+        }
+    </script>
+</body>
+</html>
+
