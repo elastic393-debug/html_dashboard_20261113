@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>設計スケジュール & 負荷＆進捗管理ダッシュボード</title>
+    <style>
+        /* SharePointプレビュー完全対応・インラインスタイル */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f9fafb; color: #1f2937; margin: 0; padding: 24px; }
+        .max-w-7xl { max-width: 80rem; margin: 0 auto; }
+        .space-y-6 > * + * { margin-top: 24px; }
+        .bg-white { background-color: #ffffff; }
+        .p-6 { padding: 24px; }
+        .p-5 { padding: 20px; }
+        .p-4 { padding: 16px; }
+        .px-3 { padding-left: 12px; padding-right: 12px; }
+        .py-2 { padding-top: 8px; padding-bottom: 8px; }
+        .px-2 { padding-left: 8px; padding-right: 8px; }
+        .rounded-lg { border-radius: 8px; }
+        .rounded-md { border-radius: 6px; }
+        .rounded-full { border-radius: 9999px; }
+        .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+        .shadow-md { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        .border-l-4 { border-left-width: 4px; border-left-style: solid; }
+        .border-t-4 { border-top-width: 4px; border-top-style: solid; }
+        .border-red-500 { border-color: #ef4444; }
+        .border-amber-500 { border-color: #f59e0b; }
+        .border-orange-500 { border-color: #f97316; }
+        .border-indigo-500 { border-color: #6366f1; }
+        .border-yellow-500 { border-color: #eab308; }
+        .border-green-500 { border-color: #22c55e; }
+        .border-gray-400 { border-color: #9ca3af; }
+        .text-2xl { font-size: 1.5rem; line-height: 2rem; }
+        .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+        .text-md { font-size: 1rem; line-height: 1.5rem; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; }
+        .font-bold { font-weight: 700; }
+        .font-semibold { font-weight: 600; }
+        .font-medium { font-weight: 500; }
+        .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        .text-gray-800 { color: #1f2937; }
+        .text-gray-700 { color: #374151; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-400 { color: #9ca3af; }
+        .text-indigo-700 { color: #4338ca; }
+        .text-indigo-600 { color: #4f46e5; }
+        .text-yellow-700 { color: #a16207; }
+        .text-green-700 { color: #15803d; }
+        .bg-indigo-100 { background-color: #e0e7ff; }
+        .bg-yellow-100 { background-color: #fef9c3; }
+        .bg-red-100 { background-color: #fee2e2; }
+        .overflow-x-auto { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .max-h-40 { max-height: 160px; overflow-y: auto; }
+        .mt-1 { margin-top: 4px; }
+        .mb-1 { margin-bottom: 4px; }
+        .mb-4 { margin-bottom: 16px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+        th { background-color: #f3f4f6; font-size: 0.75rem; text-transform: uppercase; color: #6b7280; font-weight: 600; }
+
+        /* 📌 固定列（Sticky）スタイル */
+        .sticky-col-left {
+            position: sticky;
+            left: 0;
+            background-color: #ffffff;
+            z-index: 10;
+            border-right: 2px solid #e5e7eb;
+            box-sizing: border-box;
+        }
+        .sticky-col-header {
+            position: sticky;
+            left: 0;
+            background-color: #f8fafc;
+            z-index: 11;
+            border-right: 2px solid #e5e7eb;
+            box-sizing: border-box;
+        }
+
+        input[type="text"], select { border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; font-size: 0.875rem; background-color: #ffffff; outline: none; }
+        input[type="text"]:focus, select:focus { border-color: #6366f1; }
+    </style>
+</head>
+<body>
+    <div class="max-w-7xl space-y-6">
+        
+        <!-- 1️⃣ [最上部] ヘッダー & フィルター・検索バー -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; background-color: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+            <div>
+                <h1 class="text-2xl font-bold mb-1 text-gray-800">📊 設計スケジュール・負荷＆進捗管理ダッシュボード</h1>
+                <p class="text-sm text-gray-500" style="margin:0;">全社進捗サマリー・アラート・スケジュール・ヒートマップ統合表示</p>
+            </div>
+            <!-- コントロールエリア -->
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <!-- 🔍 検索窓 -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span class="text-xs font-semibold text-gray-700">🔍 検索:</span>
+                    <input type="text" id="search-keyword" placeholder="C-CODE または 案件名..." style="width: 180px;">
+                </div>
+                <!-- 👤 担当者フィルター -->
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <label for="staff-filter" class="text-xs font-semibold text-gray-700">👤 担当者:</label>
+                    <select id="staff-filter">
+                        <option value="ALL">全員（全件）</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2️⃣ [KPIカード] 全体ステータス概要サマリー -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px;">
+            <div class="bg-white p-4 rounded-lg shadow-sm border-t-4 border-indigo-500 text-center">
+                <div class="text-xs text-gray-500 font-semibold">仕掛中アイテム</div>
+                <div id="count-in-progress" class="text-2xl font-bold text-indigo-700 mt-1">0</div>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-sm border-t-4 border-yellow-500 text-center">
+                <div class="text-xs text-gray-500 font-semibold">依頼待ちアイテム</div>
+                <div id="count-waiting" class="text-2xl font-bold text-yellow-700 mt-1">0</div>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-sm border-t-4 border-green-500 text-center">
+                <div class="text-xs text-gray-500 font-semibold">完了アイテム</div>
+                <div id="count-completed" class="text-2xl font-bold text-green-700 mt-1">0</div>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-sm border-t-4 border-gray-400 text-center">
+                <div class="text-xs text-gray-500 font-semibold">総件数</div>
+                <div id="count-total" class="text-2xl font-bold text-gray-700 mt-1">0</div>
+            </div>
+        </div>
+
+        <!-- 3️⃣ [要警戒] アラート ＆ リマインド（3列エリア） -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+            <!-- 日程超過 -->
+            <div class="bg-white p-5 rounded-lg shadow-sm border-l-4 border-red-500">
+                <h2 class="text-md font-bold text-gray-800 mb-3" style="display: flex; justify-content: space-between; align-items: center; margin-top:0;">
+                    <span>🚨 日程超過・要警戒</span>
+                    <span id="count-overdue-alert" class="bg-red-100 text-red-800 text-xs px-2 py-0.5 rounded-full font-bold">0件</span>
+                </h2>
+                <div id="alert-overdue" class="space-y-2 text-sm text-gray-600 max-h-40"></div>
+            </div>
+
+            <!-- 開始日経過・未依頼 -->
+            <div class="bg-white p-5 rounded-lg shadow-sm border-l-4 border-orange-500">
+                <h2 class="text-md font-bold text-gray-800 mb-3" style="display: flex; justify-content: space-between; align-items: center; margin-top:0;">
+                    <span>⚠️ 開始日経過・未依頼</span>
+                    <span id="count-unrequested-alert" style="background-color:#ffedd5; color:#9a3412;" class="text-xs px-2 py-0.5 rounded-full font-bold">0件</span>
+                </h2>
+                <div id="alert-unrequested" class="space-y-2 text-sm text-gray-600 max-h-40"></div>
+            </div>
+
+            <!-- 出力日リマインド -->
+            <div class="bg-white p-5 rounded-lg shadow-sm border-l-4 border-amber-500">
+                <h2 class="text-md font-bold text-gray-800 mb-3" style="display: flex; justify-content: space-between; align-items: center; margin-top:0;">
+                    <span>⏰ データ出力日 リマインド</span>
+                </h2>
+                <div id="reminder-output" class="space-y-2 text-sm text-gray-600 max-h-40"></div>
+            </div>
+        </div>
+
+        <!-- 4️⃣ [詳細リスト] 仕掛中 ＆ 依頼待ち一覧 -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px;">
+            <!-- 仕掛中 -->
+            <div class="bg-white shadow-md rounded-lg p-6">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4" style="display: flex; align-items: center; margin-top:0;">
+                    <span style="display:inline-block; width:12px; height:12px; background-color:#6366f1; border-radius:50%; margin-right:8px;"></span>
+                    仕掛中アイテム一覧 <span id="count-inprogress-badge" class="ml-2 text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full" style="margin-left:8px;">0件</span>
+                </h2>
+                <div class="overflow-x-auto">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">C-CODE / 管理NO / 案件名</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">設計期間</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">担当者</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inprogress-table-body" class="bg-white"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 依頼待ち -->
+            <div class="bg-white shadow-md rounded-lg p-6">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4" style="display: flex; align-items: center; margin-top:0;">
+                    <span style="display:inline-block; width:12px; height:12px; background-color:#facc15; border-radius:50%; margin-right:8px;"></span>
+                    依頼待ちアイテム一覧 <span id="count-waiting-badge" class="ml-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full" style="margin-left:8px;">0件</span>
+                </h2>
+                <div class="overflow-x-auto">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">C-CODE / 管理NO / 案件名</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">設計期間</th>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">担当者</th>
+                            </tr>
+                        </thead>
+                        <tbody id="waiting-table-body" class="bg-white"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 凡例 -->
+        <div style="display: flex; gap: 24px; align-items: center; background-color: #ffffff; padding: 12px 16px; border-radius: 8px;" class="text-xs text-gray-600 shadow-sm">
+            <div style="display: flex; align-items: center;"><span style="width:12px; height:12px; background-color:#6366f1; display:inline-block; border-radius:3px; margin-right:8px;"></span>設計期間（平日）</div>
+            <div style="display: flex; align-items: center;"><span style="color:#d97706; font-weight:bold; margin-right:4px;">🔍</span>検図日</div>
+            <div style="display: flex; align-items: center;"><span style="color:#059669; font-weight:bold; margin-right:4px;">📤</span>データ出力日</div>
+        </div>
+
+        <!-- 5️⃣ [チャート] 📅 スケジュール タイムライン（ガントチャート） -->
+        <div class="bg-white shadow-md rounded-lg p-6">
+            <h2 class="text-lg font-semibold text-gray-700 mb-4" style="margin-top:0;">📅 スケジュール タイムライン（土日祝除く・固定列）</h2>
+            <div class="overflow-x-auto" style="border: 1px solid #e5e7eb; border-radius: 6px;">
+                <div id="gantt-chart-container"></div>
+            </div>
+        </div>
+
+        <!-- 6️⃣ [分析] 🔥 負荷率ヒートマップ -->
+        <div class="bg-white shadow-md rounded-lg p-6">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-700" style="margin:0;">🔥 平日別・担当者別 負荷率ヒートマップ（固定列）</h2>
+                    <p class="text-xs text-gray-400" style="margin: 4px 0 0 0;">※ 標準稼働 7.5h に対する負荷率（緑: 正常 &le; 60%, 黄: 注意 &le; 100%, 赤: 過負荷 &gt; 100%）</p>
+                </div>
+                <div style="display: flex; gap: 8px; font-size: 11px;">
+                    <span style="padding: 4px 8px; background-color: #dcfce7; color: #166534; border-radius: 4px; font-weight: 500;">余裕 (&le; 60%)</span>
+                    <span style="padding: 4px 8px; background-color: #fef9c3; color: #713f12; border-radius: 4px; font-weight: 500;">注意 (&le; 100%)</span>
+                    <span style="padding: 4px 8px; background-color: #fee2e2; color: #991b1b; border-radius: 4px; font-weight: 500;">過負荷 (&gt; 100%)</span>
+                </div>
+            </div>
+            <div class="overflow-x-auto" style="border: 1px solid #e5e7eb; border-radius: 6px;">
+                <div id="heatmap-container"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const scheduleData = [
+            {
+                "NO": "PRJ-001", "DEPT": "開発第一部", "BU": "ユニットA", "ITEM": "電動パワートレイン基本設計", "STATUS": "仕掛中",
+                "MEMBER1": "山田 太郎", "MEMBER2": "佐藤 次郎", "MEMBER3": "鈴木 花子",
+                "PREDAY1": 3.0, "PREDAY2": 2.5, "PREDAY3": 1.0,
+                "C-CODE": "C-1001", "AA_START": "2026-10-01", "AA_END": "2026-10-15", "AA_CHECK": "2026-10-16", "OUTPUT_DAY": "2026-10-18"
+            },
+            {
+                "NO": "PRJ-002", "DEPT": "開発第二部", "BU": "ユニットB", "ITEM": "インバーター詳細設計", "STATUS": "依頼待ち",
+                "MEMBER1": "山田 太郎", "MEMBER2": "高橋 健", "MEMBER3": "",
+                "PREDAY1": 2.0, "PREDAY2": 3.0, "PREDAY3": 0,
+                "C-CODE": "C-1002", "AA_START": "2026-10-05", "AA_END": "2026-10-25", "AA_CHECK": "2026-10-26", "OUTPUT_DAY": "2026-10-28"
+            },
+            {
+                "NO": "PRJ-003", "DEPT": "開発第一部", "BU": "ユニットA", "ITEM": "駆動制御ユニット機構設計", "STATUS": "仕掛中",
+                "MEMBER1": "佐藤 次郎", "MEMBER2": "鈴木 花子", "MEMBER3": "",
+                "PREDAY1": 4.0, "PREDAY2": 2.0, "PREDAY3": 0,
+                "C-CODE": "C-1003", "AA_START": "2026-09-15", "AA_END": "2026-09-30", "AA_CHECK": "2026-10-01", "OUTPUT_DAY": "2026-10-03"
+            },
+            {
+                "NO": "PRJ-004", "DEPT": "生産技術部", "BU": "ユニットC", "ITEM": "組立ライン治具設計", "STATUS": "完了",
+                "MEMBER1": "渡辺 謙", "MEMBER2": "高橋 健", "MEMBER3": "",
+                "PREDAY1": 3.5, "PREDAY2": 2.0, "PREDAY3": 0,
+                "C-CODE": "C-1004", "AA_START": "2026-09-01", "AA_END": "2026-09-10", "AA_CHECK": "2026-09-11", "OUTPUT_DAY": "2026-09-12"
+            },
+            {
+                "NO": "PRJ-005", "DEPT": "開発第二部", "BU": "ユニットB", "ITEM": "バッテリー冷却回路設計", "STATUS": "仕掛中",
+                "MEMBER1": "鈴木 花子", "MEMBER2": "渡辺 謙", "MEMBER3": "山田 太郎",
+                "PREDAY1": 2.5, "PREDAY2": 2.5, "PREDAY3": 2.0,
+                "C-CODE": "C-1005", "AA_START": "2026-09-20", "AA_END": "2026-10-10", "AA_CHECK": "2026-10-11", "OUTPUT_DAY": "2026-10-12"
+            }
+        ];
+
+        const STANDARD_HOURS = 7.5;
+
+        function parseLocalDate(dateStr) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        }
+
+        function formatDateStr(dateObj) {
+            const y = dateObj.getFullYear();
+            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dateObj.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function isHolidaysOrWeekend(dateStr) {
+            const dt = parseLocalDate(dateStr);
+            const dayOfWeek = dt.getDay();
+            if (dayOfWeek === 0 || dayOfWeek === 6) return true;
+
+            const holidays2026 = [
+                "2026-01-01", "2026-01-12", "2026-02-11", "2026-02-23", "2026-03-20",
+                "2026-04-29", "2026-05-03", "2026-05-04", "2026-05-05", "2026-05-06",
+                "2026-07-20", "2026-08-11", "2026-09-21", "2026-09-22", "2026-09-23",
+                "2026-10-12", "2026-11-03", "2026-11-23"
+            ];
+            return holidays2026.includes(dateStr);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initFilters(scheduleData);
+            renderDashboard();
+            document.getElementById('staff-filter').addEventListener('change', renderDashboard);
+            document.getElementById('search-keyword').addEventListener('input', renderDashboard);
+        });
+
+        function initFilters(data) {
+            const staffSet = new Set();
+            data.forEach(row => {
+                if (row['MEMBER1']) staffSet.add(row['MEMBER1'].trim());
+                if (row['MEMBER2']) staffSet.add(row['MEMBER2'].trim());
+                if (row['MEMBER3']) staffSet.add(row['MEMBER3'].trim());
+            });
+
+            const staffSelect = document.getElementById('staff-filter');
+            staffSet.forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name; opt.textContent = name;
+                staffSelect.appendChild(opt);
+            });
+        }
+
+        function getWeekdayRange(startDateStr, endDateStr) {
+            const arr = [];
+            let dt = parseLocalDate(startDateStr);
+            const endDt = parseLocalDate(endDateStr);
+
+            while (dt <= endDt) {
+                const dateStr = formatDateStr(dt);
+                if (!isHolidaysOrWeekend(dateStr)) {
+                    arr.push(dateStr);
+                }
+                dt.setDate(dt.getDate() + 1);
+            }
+            return arr;
+        }
+
+        function diffWeekdayDays(startStr, targetStr) {
+            let count = 0;
+            let dt = parseLocalDate(startStr);
+            const targetDt = parseLocalDate(targetStr);
+            const step = dt <= targetDt ? 1 : -1;
+            
+            while (formatDateStr(dt) !== targetStr) {
+                dt.setDate(dt.getDate() + step);
+                const dStr = formatDateStr(dt);
+                if (!isHolidaysOrWeekend(dStr)) {
+                    count += step;
+                }
+            }
+            return count;
+        }
+
+        function getTodayStr() {
+            return formatDateStr(new Date());
+        }
+
+        function renderDashboard() {
+            const selectedStaff = document.getElementById('staff-filter').value;
+            const keyword = document.getElementById('search-keyword').value.toLowerCase().trim();
+
+            const ganttChartEl = document.getElementById('gantt-chart-container');
+            const heatmapContainer = document.getElementById('heatmap-container');
+            const inprogressTbody = document.getElementById('inprogress-table-body');
+            const waitingTbody = document.getElementById('waiting-table-body');
+            const reminderEl = document.getElementById('reminder-output');
+            const alertOverdueEl = document.getElementById('alert-overdue');
+            const alertUnrequestedEl = document.getElementById('alert-unrequested');
+
+            let minDate = null;
+            let maxDate = null;
+            const validTasks = [];
+            const dailyWorkload = {};
+            const staffSet = new Set();
+            const todayStr = getTodayStr();
+
+            const reminderList = [];
+            const overdueList = [];
+            const unrequestedList = [];
+
+            let inProgressCount = 0;
+            let waitingCount = 0;
+            let completedCount = 0;
+
+            scheduleData.forEach(row => {
+                const status = row['STATUS'] || '';
+                const outputDate = row['OUTPUT_DAY'];
+                const endDate = row['AA_END'];
+                const startDate = row['AA_START'];
+                const title = row['ITEM'] || '';
+                const cCode = row['C-CODE'] || '';
+
+                if (status === '仕掛中') inProgressCount++;
+                else if (status === '依頼待ち') waitingCount++;
+                else if (status === '完了') completedCount++;
+
+                if (row['MEMBER1']) staffSet.add(row['MEMBER1'].trim());
+                if (row['MEMBER2']) staffSet.add(row['MEMBER2'].trim());
+                if (row['MEMBER3']) staffSet.add(row['MEMBER3'].trim());
+
+                // 検索 ＆ 担当者フィルタ一致チェック
+                const members = [row['MEMBER1'], row['MEMBER2'], row['MEMBER3']].map(m => m ? m.trim() : '');
+                const matchStaff = (selectedStaff === 'ALL' || members.includes(selectedStaff));
+                const matchKeyword = !keyword || title.toLowerCase().includes(keyword) || cCode.toLowerCase().includes(keyword);
+
+                // アラート抽出
+                if (status !== '完了' && status !== 'キャンセル') {
+                    const targetDate = outputDate || endDate;
+                    if (targetDate && targetDate < todayStr) {
+                        const daysOver = diffWeekdayDays(targetDate, todayStr);
+                        overdueList.push({ ...row, daysOver, targetDate });
+                    }
+                }
+
+                if (status === '依頼待ち' && startDate && startDate <= todayStr) {
+                    const daysPassed = diffWeekdayDays(startDate, todayStr);
+                    unrequestedList.push({ ...row, daysPassed });
+                }
+
+                if (outputDate && status !== '完了' && status !== 'キャンセル') {
+                    const diffToOutput = diffWeekdayDays(todayStr, outputDate);
+                    if (diffToOutput <= 3) {
+                        reminderList.push({ title: row['ITEM'], no: row['NO'], cCode: row['C-CODE'], outputDate, diff: diffToOutput });
+                    }
+                }
+
+                if (!startDate || !endDate) return;
+
+                if (!minDate || startDate < minDate) minDate = startDate;
+                if (!maxDate || endDate > maxDate) maxDate = endDate;
+
+                if (matchStaff && matchKeyword) {
+                    validTasks.push(row);
+                }
+
+                // 負荷集計
+                const m1 = members[0], h1 = parseFloat(row['PREDAY1']) || 0;
+                const m2 = members[1], h2 = parseFloat(row['PREDAY2']) || 0;
+                const m3 = members[2], h3 = parseFloat(row['PREDAY3']) || 0;
+
+                const weekdayRange = getWeekdayRange(startDate, endDate);
+                weekdayRange.forEach(dateStr => {
+                    if (!dailyWorkload[dateStr]) dailyWorkload[dateStr] = {};
+                    if (m1 && h1 > 0 && (selectedStaff === 'ALL' || m1 === selectedStaff)) {
+                        dailyWorkload[dateStr][m1] = (dailyWorkload[dateStr][m1] || 0) + h1;
+                    }
+                    if (m2 && h2 > 0 && (selectedStaff === 'ALL' || m2 === selectedStaff)) {
+                        dailyWorkload[dateStr][m2] = (dailyWorkload[dateStr][m2] || 0) + h2;
+                    }
+                    if (m3 && h3 > 0 && (selectedStaff === 'ALL' || m3 === selectedStaff)) {
+                        dailyWorkload[dateStr][m3] = (dailyWorkload[dateStr][m3] || 0) + h3;
+                    }
+                });
+            });
+
+            // 全体カウンターの反映
+            document.getElementById('count-in-progress').textContent = inProgressCount;
+            document.getElementById('count-waiting').textContent = waitingCount;
+            document.getElementById('count-completed').textContent = completedCount;
+            document.getElementById('count-total').textContent = scheduleData.length;
+
+            // アラートの表示更新（日超過表記）
+            overdueList.sort((a, b) => a.AA_END.localeCompare(b.AA_END));
+            alertOverdueEl.innerHTML = '';
+            document.getElementById('count-overdue-alert').textContent = `${overdueList.length}件`;
+            if (overdueList.length === 0) {
+                alertOverdueEl.innerHTML = `<p class="text-xs text-green-600 font-medium">現在、日程を超過している案件はありません 🎉</p>`;
+            } else {
+                overdueList.forEach(item => {
+                    alertOverdueEl.innerHTML += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; background-color: #fef2f2; padding: 8px 10px; border-radius: 6px; border: 1px solid #fee2e2;">
+                            <div>
+                                <span style="font-weight: 700; color: #7f1d1d;"><span style="color: #4f46e5; font-family: monospace; font-size: 0.75rem;">[${item['C-CODE']}]</span> [${item.NO}] ${item.ITEM}</span>
+                                <span style="font-size: 0.75rem; color: #dc2626; display: block; margin-top: 2px;">担当: ${[item.MEMBER1, item.MEMBER2, item.MEMBER3].filter(Boolean).join(', ')} (期限: ${item.AA_END})</span>
+                            </div>
+                            <span style="padding: 2px 8px; font-size: 0.75rem; font-weight: 700; border-radius: 4px; background-color: #fecaca; color: #7f1d1d; white-space: nowrap;">${item.daysOver}日超過</span>
+                        </div>`;
+                });
+            }
+
+            unrequestedList.sort((a, b) => a.AA_START.localeCompare(b.AA_START));
+            alertUnrequestedEl.innerHTML = '';
+            document.getElementById('count-unrequested-alert').textContent = `${unrequestedList.length}件`;
+            if (unrequestedList.length === 0) {
+                alertUnrequestedEl.innerHTML = `<p class="text-xs text-green-600 font-medium">開始日を過ぎた未依頼案件はありません 👍</p>`;
+            } else {
+                unrequestedList.forEach(item => {
+                    alertUnrequestedEl.innerHTML += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; background-color: #fff7ed; padding: 8px 10px; border-radius: 6px; border: 1px solid #ffedd5;">
+                            <div>
+                                <span style="font-weight: 700; color: #9a3412;"><span style="color: #4f46e5; font-family: monospace; font-size: 0.75rem;">[${item['C-CODE']}]</span> [${item.NO}] ${item.ITEM}</span>
+                                <span style="font-size: 0.75rem; color: #c2410c; display: block; margin-top: 2px;">開始予定: ${item.AA_START} (担当: ${[item.MEMBER1, item.MEMBER2, item.MEMBER3].filter(Boolean).join(', ')})</span>
+                            </div>
+                            <span style="padding: 2px 8px; font-size: 0.75rem; font-weight: 700; border-radius: 4px; background-color: #ffedd5; color: #9a3412; white-space: nowrap;">開始後 ${item.daysPassed}日経過</span>
+                        </div>`;
+                });
+            }
+
+            reminderList.sort((a, b) => a.outputDate.localeCompare(b.outputDate));
+            reminderEl.innerHTML = '';
+            if (reminderList.length === 0) {
+                reminderEl.innerHTML = `<p class="text-xs text-gray-500">直近の出力日リマインドはありません。</p>`;
+            } else {
+                reminderList.forEach(item => {
+                    let badgeBg = '#fef3c7'; let badgeColor = '#92400e';
+                    let textMsg = `あと ${item.diff}日 (${item.outputDate})`;
+                    if (item.diff < 0) {
+                        badgeBg = '#fee2e2'; badgeColor = '#991b1b';
+                        textMsg = `${Math.abs(item.diff)}日超過 (${item.outputDate})`;
+                    } else if (item.diff === 0) {
+                        badgeBg = '#ffedd5'; badgeColor = '#9a3412';
+                        textMsg = `【本日】 (${item.outputDate})`;
+                    }
+                    reminderEl.innerHTML += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; background-color: #f9fafb; padding: 6px 10px; border-radius: 6px;">
+                            <span style="font-weight: 500; color: #1f2937;"><span style="color: #4f46e5; font-family: monospace; font-size: 0.75rem;">[${item.cCode}]</span> [${item.no}] ${item.title}</span>
+                            <span style="padding: 2px 8px; font-size: 0.75rem; font-weight: 600; border-radius: 9999px; background-color: ${badgeBg}; color: ${badgeColor};">📤 ${textMsg}</span>
+                        </div>`;
+                });
+            }
+
+            // 仕掛中・依頼待ちアイテム抽出（フィルタ適用済み）
+            const inprogressList = validTasks.filter(t => t.STATUS === '仕掛中').sort((a, b) => a.AA_START.localeCompare(b.AA_START));
+            const waitingList = validTasks.filter(t => t.STATUS === '依頼待ち').sort((a, b) => a.AA_START.localeCompare(b.AA_START));
+
+            inprogressTbody.innerHTML = '';
+            waitingTbody.innerHTML = '';
+            document.getElementById('count-inprogress-badge').textContent = `${inprogressList.length}件`;
+            document.getElementById('count-waiting-badge').textContent = `${waitingList.length}件`;
+
+            inprogressList.forEach(item => {
+                const staffNames = [item.MEMBER1, item.MEMBER2, item.MEMBER3].filter(Boolean).join(', ');
+                inprogressTbody.innerHTML += `
+                    <tr>
+                        <td style="padding: 8px 12px; color: #111827; font-weight: 500;"><span style="color: #4f46e5; font-family: monospace; font-size: 0.75rem;">[${item['C-CODE']}]</span> [${item.NO}] ${item.ITEM}</td>
+                        <td style="padding: 8px 12px; color: #6b7280;">${item.AA_START} 〜 ${item.AA_END}</td>
+                        <td style="padding: 8px 12px; color: #6b7280;">${staffNames}</td>
+                    </tr>`;
+            });
+            waitingList.forEach(item => {
+                const staffNames = [item.MEMBER1, item.MEMBER2, item.MEMBER3].filter(Boolean).join(', ');
+                waitingTbody.innerHTML += `
+                    <tr>
+                        <td style="padding: 8px 12px; color: #111827; font-weight: 500;"><span style="color: #4f46e5; font-family: monospace; font-size: 0.75rem;">[${item['C-CODE']}]</span> [${item.NO}] ${item.ITEM}</td>
+                        <td style="padding: 8px 12px; color: #6b7280;">${item.AA_START} 〜 ${item.AA_END}</td>
+                        <td style="padding: 8px 12px; color: #6b7280;">${staffNames}</td>
+                    </tr>`;
+            });
+
+            if (inprogressList.length === 0) inprogressTbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #9ca3af; font-size: 0.75rem; padding: 12px;">該当する仕掛中アイテムはありません。</td></tr>`;
+            if (waitingList.length === 0) waitingTbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #9ca3af; font-size: 0.75rem; padding: 12px;">該当する依頼待ちアイテムはありません。</td></tr>`;
+
+            if (validTasks.length === 0 || !minDate || !maxDate) {
+                ganttChartEl.innerHTML = '<p style="color: #6b7280; font-size: 0.875rem; padding:16px;">該当するスケジュールデータはありません。</p>';
+                heatmapContainer.innerHTML = '<p style="color: #6b7280; font-size: 0.875rem; padding:16px;">該当する負荷データはありません。</p>';
+                return;
+            }
+
+            const timelineDates = getWeekdayRange(minDate, maxDate);
+            const totalDays = timelineDates.length;
+
+            // 📌 タイムライン（ガントチャート）描画
+            let headerHtml = `<div style="display: flex; width: max-content; border-bottom: 1px solid #e5e7eb; background-color: #f8fafc; font-size: 0.75rem; font-weight: 700; color: #6b7280;">
+                <div class="sticky-col-header" style="width: 280px; min-width: 280px; height: 35px; padding: 10px 12px; display: flex; align-items: center;">C-CODE / 案件名</div>
+                <div style="display: flex; height: 35px; align-items: center;">`;
+            
+            timelineDates.forEach((d, idx) => {
+                const parts = d.split('-');
+                const label = `${parseInt(parts[1])}/${parseInt(parts[2])}`;
+                headerHtml += `<div style="width: 44px; min-width: 44px; text-align: center; font-size: 10px; color: ${idx % 2 === 0 ? '#374151' : '#9ca3af'}; border-left: 1px dashed #f3f4f6;">${label}</div>`;
+            });
+            headerHtml += `</div></div>`;
+
+            let rowsHtml = '';
+            validTasks.sort((a, b) => a.AA_START.localeCompare(b.AA_START)).forEach((row, index) => {
+                const title = row['ITEM'];
+                const cCode = row['C-CODE'];
+                const start = row['AA_START'];
+                const end = row['AA_END'];
+                const reviewDate = row['AA_CHECK'];
+                const outputDate = row['OUTPUT_DAY'];
+                const staffNames = [row['MEMBER1'], row['MEMBER2'], row['MEMBER3']].filter(Boolean).join(', ');
+
+                const offsetDays = diffWeekdayDays(timelineDates[0], start);
+                const durationDays = diffWeekdayDays(start, end) + 1;
+                const barLeftPx = offsetDays * 44;
+                const barWidthPx = durationDays * 44;
+
+                const barColor = index % 2 === 0 ? '#6366f1' : '#3b82f6';
+
+                let milestoneHtml = '';
+                if (reviewDate) {
+                    const reviewCol = diffWeekdayDays(timelineDates[0], reviewDate);
+                    if (reviewCol >= 0 && reviewCol < totalDays) {
+                        const mLeft = reviewCol * 44 + 22;
+                        milestoneHtml += `
+                            <div style="position: absolute; z-index: 5; top: 2px; left: ${mLeft}px; transform: translateX(-50%);" title="検図日: ${reviewDate}">
+                                <span style="background-color: #fef3c7; color: #b45309; border: 1px solid #fde68a; border-radius: 9999px; padding: 0 4px; font-size: 9px; font-weight: bold; white-space: nowrap;">🔍検図</span>
+                            </div>`;
+                    }
+                }
+
+                if (outputDate) {
+                    const outputCol = diffWeekdayDays(timelineDates[0], outputDate);
+                    if (outputCol >= 0 && outputCol < totalDays) {
+                        const mLeft = outputCol * 44 + 22;
+                        milestoneHtml += `
+                            <div style="position: absolute; z-index: 5; bottom: 2px; left: ${mLeft}px; transform: translateX(-50%);" title="データ出力日: ${outputDate}">
+                                <span style="background-color: #d1fae5; color: #047857; border: 1px solid #a7f3d0; border-radius: 9999px; padding: 0 4px; font-size: 9px; font-weight: bold; white-space: nowrap;">📤出力</span>
+                            </div>`;
+                    }
+                }
+
+                rowsHtml += `
+                    <div style="display: flex; width: max-content; align-items: center; border-bottom: 1px solid #f3f4f6; font-size: 0.875rem; height: 50px;">
+                        <div class="sticky-col-left" style="width: 280px; min-width: 280px; height: 50px; padding: 6px 12px; display: flex; flex-direction: column; justify-content: center;">
+                            <div style="font-weight: 500; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><span style="color: #4f46e5; font-family: monospace; font-size: 0.75rem;">[${cCode}]</span> ${title}</div>
+                            <div style="font-size: 0.75rem; color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">👤 ${staffNames || '-'}</div>
+                        </div>
+                        <div style="position: relative; height: 50px; display: flex; align-items: center; width: ${totalDays * 44}px;">
+                            <div style="position: absolute; left: ${barLeftPx}px; width: ${barWidthPx}px; background-color: ${barColor}; border-radius: 6px; height: 22px; color: white; font-size: 11px; display: flex; align-items: center; padding: 0 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); overflow: hidden; white-space: nowrap;"
+                                 title="${title} (${start} 〜 ${end})">
+                                <span style="overflow: hidden; text-overflow: ellipsis;">${title}</span>
+                            </div>
+                            ${milestoneHtml}
+                        </div>
+                    </div>`;
+            });
+
+            ganttChartEl.innerHTML = headerHtml + rowsHtml;
+
+            // 📌 負荷率ヒートマップ描画
+            const targetStaffs = selectedStaff === 'ALL' ? Array.from(staffSet).sort() : [selectedStaff];
+
+            let hmHeader = `<div style="display: flex; width: max-content; border-bottom: 1px solid #e5e7eb; background-color: #f8fafc; font-size: 0.75rem; font-weight: 700; color: #6b7280;">
+                <div class="sticky-col-header" style="width: 140px; min-width: 140px; height: 35px; padding: 10px 12px; display: flex; align-items: center;">担当者名</div>
+                <div style="display: flex; height: 35px; align-items: center;">`;
+            
+            timelineDates.forEach(d => {
+                const parts = d.split('-');
+                hmHeader += `<div style="width: 44px; min-width: 44px; text-align: center; font-size: 10px; border-left: 1px dashed #f3f4f6;">${parseInt(parts[1])}/${parseInt(parts[2])}</div>`;
+            });
+            hmHeader += `</div></div>`;
+
+            let hmRows = '';
+            targetStaffs.forEach(staff => {
+                hmRows += `<div style="display: flex; width: max-content; align-items: center; border-bottom: 1px solid #f3f4f6; font-size: 0.75rem; height: 40px;">
+                    <div class="sticky-col-left" style="width: 140px; min-width: 140px; height: 40px; padding: 0 12px; font-weight: 500; color: #1f2937; display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${staff}</div>
+                    <div style="display: flex; align-items: center;">`;
+
+                timelineDates.forEach(dateStr => {
+                    const hours = (dailyWorkload[dateStr] && dailyWorkload[dateStr][staff]) ? dailyWorkload[dateStr][staff] : 0;
+                    const loadRate = Math.round((hours / STANDARD_HOURS) * 100);
+
+                    let bg = '#f9fafb'; let color = '#9ca3af';
+                    let tooltip = `${staff} (${dateStr}): 0h (0%)`;
+
+                    if (hours > 0) {
+                        tooltip = `${staff} (${dateStr}): ${hours}h (${loadRate}%)`;
+                        if (loadRate > 100 || hours > 4.0) {
+                            bg = '#ef4444'; color = '#ffffff';
+                        } else if (loadRate > 60) {
+                            bg = '#fde047'; color = '#713f12';
+                        } else {
+                            bg = '#bbf7d0'; color = '#14532d';
+                        }
+                    }
+
+                    hmRows += `<div style="width: 42px; text-align: center; padding: 6px 0; margin: 0 1px; border-radius: 4px; background-color: ${bg}; color: ${color}; font-size: 10px; font-weight: ${hours > 0 ? '600' : 'normal'}; cursor: default;" title="${tooltip}">
+                        ${hours > 0 ? loadRate + '%' : '-'}
+                    </div>`;
+                });
+
+                hmRows += `</div></div>`;
+            });
+
+            heatmapContainer.innerHTML = hmHeader + hmRows;
+        }
+    </script>
+</body>
+</html>
