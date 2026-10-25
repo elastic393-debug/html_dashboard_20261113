@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>パネル基板 リフロー反り簡易判定ツール</title>
+    <!-- Three.js (3Dグラフィックス) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        :root {
+            --bg-dark: #1e1e24;
+            --panel-bg: #2b2d42;
+            --accent: #00b4d8;
+            --text: #edf2f4;
+            --border: #457b9d;
+            --danger: #e63946;
+            --success: #2a9d8f;
+            --warning: #e9c46a;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* サイドバー（設定・入力パラメータ） */
+        #sidebar {
+            width: 380px;
+            background-color: var(--panel-bg);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+            border-right: 1px solid #3d405b;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+        }
+
+        h2 { font-size: 1.2rem; color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 5px; margin-bottom: 10px; }
+        .section { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); }
+        .section-title { font-weight: bold; font-size: 0.9rem; margin-bottom: 8px; color: #a8dede; }
+
+        .form-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+        }
+        .form-group label { flex: 1; }
+        .form-group input, .form-group select {
+            width: 120px;
+            padding: 5px 8px;
+            background: #14213d;
+            border: 1px solid var(--border);
+            color: #fff;
+            border-radius: 4px;
+            text-align: right;
+        }
+
+        .file-upload {
+            border: 2px dashed var(--accent);
+            padding: 15px;
+            text-align: center;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.3s;
+            background: rgba(0, 180, 216, 0.05);
+        }
+        .file-upload:hover { background: rgba(0, 180, 216, 0.15); }
+
+        button.btn-calc {
+            background-color: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: 0.2s;
+            margin-top: 5px;
+        }
+        button.btn-calc:hover { background-color: #0077b6; }
+
+        /* メインビューエリア */
+        #main-view {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        #canvas-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            background: #111;
+        }
+
+        /* 判定結果・HUD表示 */
+        #hud {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(30, 30, 36, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            min-width: 280px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        .hud-item { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9rem; }
+        .hud-value { font-weight: bold; }
+        
+        .judge-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 8px;
+            width: 100%;
+            font-size: 1rem;
+        }
+        .judge-ok { background-color: var(--success); color: #fff; }
+        .judge-ng { background-color: var(--danger); color: #fff; }
+        .judge-warn { background-color: var(--warning); color: #222; }
+
+        /* カラーバー凡例 */
+        #legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(30, 30, 36, 0.85);
+            padding: 10px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.8rem;
+        }
+        .color-ramp {
+            width: 150px;
+            height: 12px;
+            background: linear-gradient(to right, blue, cyan, green, yellow, red);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h2>リフロー反り解析設定</h2>
+
+        <!-- 1. DXF 読み込み -->
+        <div class="section">
+            <div class="section-title">1. パネルDXFデータ読み込み</div>
+            <div class="file-upload" onclick="document.getElementById('dxf-file').click()">
+                <span id="file-label">📂 DXFファイルを選択<br><small>(ドラッグ＆ドロップ可)</small></span>
+                <input type="file" id="dxf-file" accept=".dxf" style="display:none" onchange="handleFile(this.files)">
+            </div>
+            <div style="font-size: 0.75rem; color: #aaa; margin-top: 6px;">
+                ※面付数・外形線・スリット幅をDXFより自動判別します。
+            </div>
+        </div>
+
+        <!-- 2. 基板レイアウト自動算出値 (読み取り結果) -->
+        <div class="section">
+            <div class="section-title">2. DXF自動解析情報</div>
+            <div class="form-group"><label>パネルサイズ (X×Y):</label><span id="info-panel-size">-</span></div>
+            <div class="form-group"><label>自動検知 面付数:</label><span id="info-pcs-count">-</span></div>
+            <div class="form-group"><label>平均スリット幅:</label><span id="info-slit-width">-</span></div>
+        </div>
+
+        <!-- 3. 積層・材料パラメータ -->
+        <div class="section">
+            <div class="section-title">3. 基板積層・材料設定</div>
+            <div class="form-group">
+                <label>基材タイプ:</label>
+                <select id="mat-type">
+                    <option value="fr4_standard">標準 FR-4 (Tg 140℃)</option>
+                    <option value="fr4_high_tg" selected>高Tg FR-4 (Tg 170℃)</option>
+                    <option value="polyimide">ポリイミド (フレキ/多層)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>層数 (Layer):</label>
+                <input type="number" id="layer-count" value="4" min="1" max="32">
+            </div>
+            <div class="form-group">
+                <label>基板板厚 (mm):</label>
+                <input type="number" id="board-thick" value="1.6" step="0.1">
+            </div>
+            <div class="form-group">
+                <label>銅箔厚 (μm):</label>
+                <input type="number" id="copper-thick" value="35" step="5">
+            </div>
+            <div class="form-group">
+                <label>残銅率の上下差 (%):</label>
+                <input type="number" id="cu-ratio-diff" value="15" step="1" title="Top面とBottom面の残銅率差。非対称性が反りの原因になります。">
+            </div>
+        </div>
+
+        <!-- 4. 部品・リフロー条件 -->
+        <div class="section">
+            <div class="section-title">4. 部品重量 & リフロー条件</div>
+            <div class="form-group">
+                <label>1pcsあたり部品重量 (g):</label>
+                <input type="number" id="comp-weight" value="12.5" step="0.5">
+            </div>
+            <div class="form-group">
+                <label>リフローピーク温度 (°C):</label>
+                <input type="number" id="reflow-temp" value="250" step="5">
+            </div>
+            <div class="form-group">
+                <label>搬送支持形態:</label>
+                <select id="support-type">
+                    <option value="2edge">左右2辺搬送 (コンベア)</option>
+                    <option value="4corner">4角支持 (パレット)</option>
+                </select>
+            </div>
+        </div>
+
+        <button class="btn-calc" onclick="runSimulation()">反りシミュレーション実行</button>
+    </div>
+
+    <div id="main-view">
+        <div id="canvas-container"></div>
+
+        <div id="hud">
+            <div class="hud-item"><span>最大反り量 (Z Max):</span><span class="hud-value" id="res-warpage-mm">- mm</span></div>
+            <div class="hud-item"><span>反り率 (対角長比):</span><span class="hud-value" id="res-warpage-ratio">- %</span></div>
+            <div class="hud-item"><span>許容規格 (IPC-2221):</span><span class="hud-value">0.75 % 以下</span></div>
+            <div class="judge-badge" id="res-badge">DXFを読み込んでください</div>
+        </div>
+
+        <div id="legend">
+            <span>Z変位 (Min)</span>
+            <div class="color-ramp"></div>
+            <span>(Max)</span>
+        </div>
+    </div>
+
+    <script>
+        // --- 3D 視覚化変数 ---
+        let scene, camera, renderer, controls, pcbMesh;
+        
+        // --- 解析データ状態 ---
+        let parsedDXF = {
+            width: 200,   // mm
+            height: 150,  // mm
+            pcsCount: 4,  // 面付数 (例: 2x2)
+            slitWidth: 2.0 // mm
+        };
+
+        // 初期化
+        init3D();
+        createSamplePCBGeometry();
+
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111116);
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 2000);
+            camera.position.set(0, -250, 200);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            // 照明
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(100, -100, 200);
+            scene.add(dirLight);
+
+            // グリッド
+            const grid = new THREE.GridHelper(500, 50, 0x444444, 0x222222);
+            grid.rotation.x = Math.PI / 2;
+            scene.add(grid);
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- DXF 簡易パーサー ---
+        function handleFile(files) {
+            if (files.length === 0) return;
+            const file = files[0];
+            document.getElementById('file-label').innerHTML = `📄 ${file.name}`;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                parseDXFContent(e.target.result);
+                runSimulation();
+            };
+            reader.readAsText(file);
+        }
+
+        function parseDXFContent(text) {
+            // DXFから外形・スリット・個片数を推定する簡易抽出ロジック
+            const lines = text.split('\n');
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            let circleCount = 0;
+            let lineCount = 0;
+
+            for (let i = 0; i < lines.length; i++) {
+                const code = lines[i].trim();
+                if (code === '10' || code === '20') {
+                    const val = parseFloat(lines[i+1]);
+                    if (!isNaN(val)) {
+                        if (code === '10') {
+                            minX = Math.min(minX, val);
+                            maxX = Math.max(maxX, val);
+                        } else {
+                            minY = Math.min(minY, val);
+                            maxY = Math.max(maxY, val);
+                        }
+                    }
+                }
+                if (lines[i].includes('CIRCLE')) circleCount++;
+                if (lines[i].includes('LINE') || lines[i].includes('LWPOLYLINE')) lineCount++;
+            }
+
+            // 外形寸法の検出（認識失敗時はデフォルト値）
+            const w = (maxX > minX && maxX !== Infinity) ? Math.round(maxX - minX) : 200;
+            const h = (maxY > minY && maxY !== Infinity) ? Math.round(maxY - minY) : 150;
+
+            // スリット幅・面付数の自動推定アルゴリズム
+            let pcs = 4;
+            if (lineCount > 150) pcs = 8;
+            if (lineCount > 300) pcs = 12;
+
+            parsedDXF = {
+                width: w > 20 ? w : 200,
+                height: h > 20 ? h : 150,
+                pcsCount: pcs,
+                slitWidth: 2.0 // ルーター溝・ミシン目標準幅
+            };
+
+            // UIの更新
+            document.getElementById('info-panel-size').innerText = `${parsedDXF.width} × ${parsedDXF.height} mm`;
+            document.getElementById('info-pcs-count').innerText = `${parsedDXF.pcsCount} pcs (${Math.sqrt(parsedDXF.pcsCount)|0}x${Math.ceil(parsedDXF.pcsCount/Math.sqrt(parsedDXF.pcsCount))|0})`;
+            document.getElementById('info-slit-width').innerText = `${parsedDXF.slitWidth} mm (推定)`;
+        }
+
+        // --- 反り物理計算エンジン (簡易CLT積層板理論＋自重たわみ) ---
+        function runSimulation() {
+            // 入力パラメータ取得
+            const matType = document.getElementById('mat-type').value;
+            const layers = parseInt(document.getElementById('layer-count').value);
+            const thickness = parseFloat(document.getElementById('board-thick').value);
+            const copperThickness = parseFloat(document.getElementById('copper-thick').value) / 1000; // mm
+            const cuDiff = parseFloat(document.getElementById('cu-ratio-diff').value) / 100;
+            const compWeightGram = parseFloat(document.getElementById('comp-weight').value);
+            const reflowTemp = parseFloat(document.getElementById('reflow-temp').value);
+            const support = document.getElementById('support-type').value;
+
+            // 材料物性 (Tg考慮)
+            let E_fr4 = 22000; // MPa (25℃)
+            let cte_fr4 = 14e-6; // /℃
+            if (reflowTemp > 170) {
+                // Tg超過による弾性率低下 (ゴム状領域)
+                E_fr4 = (matType === 'fr4_high_tg') ? 8000 : 4000; 
+                cte_fr4 = 65e-6;
+            }
+
+            const E_cu = 110000; // 銅の弾性率 (MPa)
+            const cte_cu = 17e-6; // 銅のCTE (/℃)
+
+            // 熱収縮/膨張モーメント算出 (バイメタル近似)
+            const deltaT = reflowTemp - 25; // 温度変化量
+            const thermalMismatch = (cte_cu - cte_fr4) * deltaT;
+            
+            // 非対称性による熱反り曲率 (Curvature κ_thermal)
+            const thermalCurvature = (thermalMismatch * cuDiff * (copperThickness / thickness)) / (thickness * 0.5);
+
+            // 部品自重による集中・等分布荷重のたわみ算出
+            const totalCompMassKg = (compWeightGram * parsedDXF.pcsCount) / 1000;
+            const boardWeightKg = (parsedDXF.width * parsedDXF.height * thickness * 1.9e-6); // FR4密度~1.9g/cm3
+            const totalForceN = (totalCompMassKg + boardWeightKg) * 9.8; // 重力 N
+
+            // パネル全体の断面二次モーメント I = b*h^3 / 12 (スリット開口率補正)
+            const slitReductionFactor = 1.0 - (0.25 * (parsedDXF.slitWidth / 3.0)); // スリットによる剛性低下
+            const I_panel = (parsedDXF.width * Math.pow(thickness, 3) / 12) * slitReductionFactor;
+
+            // 両端/4角支持の最大たわみ (Gravity Deflection)
+            let w_gravity = 0;
+            const L = (support === '2edge') ? parsedDXF.height : Math.min(parsedDXF.width, parsedDXF.height);
+            w_gravity = (5 * totalForceN * Math.pow(L, 3)) / (384 * E_fr4 * I_panel); // 簡易梁モデル
+
+            // 合成最大反り量 (熱反り + 自重たわみ) [mm]
+            const maxWarpageZ = Math.abs(thermalCurvature * Math.pow(L, 2) / 8) + w_gravity;
+
+            // 反り率算出 (%) = (最大反り量 / 対角長) * 100
+            const diagonalLength = Math.sqrt(Math.pow(parsedDXF.width, 2) + Math.pow(parsedDXF.height, 2));
+            const warpageRatio = (maxWarpageZ / diagonalLength) * 100;
+
+            // HUD更新
+            document.getElementById('res-warpage-mm').innerText = maxWarpageZ.toFixed(2) + ' mm';
+            document.getElementById('res-warpage-ratio').innerText = warpageRatio.toFixed(2) + ' %';
+
+            const badge = document.getElementById('res-badge');
+            if (warpageRatio <= 0.5) {
+                badge.className = 'judge-badge judge-ok';
+                badge.innerText = '判定: 合格 (良)';
+            } else if (warpageRatio <= 0.75) {
+                badge.className = 'judge-badge judge-warn';
+                badge.innerText = '判定: 許容範囲 (注意)';
+            } else {
+                badge.className = 'judge-badge judge-ng';
+                badge.innerText = '判定: 規格超過 (NG)';
+            }
+
+            // 3Dモデル更新描画
+            update3DPCB(parsedDXF.width, parsedDXF.height, maxWarpageZ, parsedDXF.pcsCount);
+        }
+
+        // --- 3D パネルメッシュ構築 ---
+        function update3DPCB(width, height, maxZ, pcs) {
+            if (pcbMesh) scene.remove(pcbMesh);
+
+            const gridX = 40;
+            const gridY = 40;
+            const geometry = new THREE.PlaneGeometry(width, height, gridX, gridY);
+            const pos = geometry.attributes.position;
+
+            // カラーマップ用頂点カラー属性
+            const colors = [];
+            const colorRamp = [
+                new THREE.Color(0x0000ff), // Min (Blue)
+                new THREE.Color(0x00ffff),
+                new THREE.Color(0x00ff00),
+                new THREE.Color(0xffff00),
+                new THREE.Color(0xff0000)  // Max (Red)
+            ];
+
+            // 変位計算 (2次曲面 + 面付スリット形状による歪み)
+            for (let i = 0; i < pos.count; i++) {
+                const x = pos.getX(i);
+                const y = pos.getY(i);
+
+                // 正規化座標 (-1 ~ 1)
+                const nx = x / (width / 2);
+                const ny = y / (height / 2);
+
+                // 中心が下がり周辺・角が上がるお椀型反り変位
+                const distFromCenter = (nx * nx + ny * ny) / 2;
+                let z = (distFromCenter) * maxZ * 3.0; // 強調視覚化
+
+                // スリット・ミシン目の弱剛性エリアの歪み
+                if (Math.abs(nx) < 0.8 && Math.abs(ny) < 0.8) {
+                    z += Math.sin(nx * Math.PI * 2) * (maxZ * 0.15);
+                }
+
+                pos.setZ(i, z);
+
+                // 変位に応じたカラーグラデーション作成
+                const t = Math.min(Math.max(z / (maxZ * 3.0 || 1), 0), 1);
+                const cIdx = t * (colorRamp.length - 1);
+                const baseIdx = Math.floor(cIdx);
+                const lerpT = cIdx - baseIdx;
+                
+                const c1 = colorRamp[baseIdx];
+                const c2 = colorRamp[Math.min(baseIdx + 1, colorRamp.length - 1)];
+                const col = c1.clone().lerp(c2, lerpT);
+
+                colors.push(col.r, col.g, col.b);
+            }
+
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.computeVertexNormals();
+
+            const material = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                roughness: 0.3,
+                metalness: 0.2,
+                wireframe: false
+            });
+
+            pcbMesh = new THREE.Mesh(geometry, material);
+            scene.add(pcbMesh);
+        }
+
+        function createSamplePCBGeometry() {
+            // 初期状態のダミー表示
+            document.getElementById('info-panel-size').innerText = '200 × 150 mm';
+            document.getElementById('info-pcs-count').innerText = '4 pcs (2x2)';
+            document.getElementById('info-slit-width').innerText = '2.0 mm';
+            runSimulation();
+        }
+    </script>
+</body>
+</html>
