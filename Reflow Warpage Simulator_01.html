@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>パネル基板 リフロー反り高度解析・3Dシミュレーター</title>
+    <!-- Three.js (3D Graphics) & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- FontAwesome for UI Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-dark: #121319;
+            --panel-bg: #1e2029;
+            --accent: #00b4d8;
+            --accent-hover: #0096c7;
+            --text-main: #edf2f4;
+            --text-sub: #8d99ae;
+            --border-color: #2b2d42;
+            --danger: #ef233c;
+            --success: #2a9d8f;
+            --warning: #e9c46a;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar UI */
+        #sidebar {
+            width: 390px;
+            background-color: var(--panel-bg);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            overflow-y: auto;
+            border-right: 1px solid var(--border-color);
+            box-shadow: 4px 0 15px rgba(0,0,0,0.4);
+            z-index: 10;
+        }
+
+        h2 { font-size: 1.15rem; color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 6px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .section { background: rgba(0,0,0,0.25); padding: 12px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); }
+        .section-title { font-weight: 600; font-size: 0.88rem; margin-bottom: 10px; color: #a8dede; display: flex; align-items: center; gap: 6px; }
+
+        .form-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 0.83rem;
+        }
+        .form-group label { flex: 1; color: var(--text-main); }
+        .form-group input, .form-group select {
+            width: 120px;
+            padding: 6px 10px;
+            background: #10141e;
+            border: 1px solid #3a3f58;
+            color: #fff;
+            border-radius: 5px;
+            text-align: right;
+            font-size: 0.85rem;
+            transition: border 0.2s;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .file-upload {
+            border: 2px dashed var(--accent);
+            padding: 16px;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: rgba(0, 180, 216, 0.04);
+        }
+        .file-upload:hover { background: rgba(0, 180, 216, 0.12); border-color: #90e0ef; }
+        .file-upload i { font-size: 1.8rem; color: var(--accent); margin-bottom: 6px; }
+
+        button.btn-calc {
+            background-color: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.2s;
+            box-shadow: 0 4px 12px rgba(0, 180, 216, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+        button.btn-calc:hover { background-color: var(--accent-hover); }
+
+        /* Main View Screen */
+        #main-view {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        #canvas-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            background: #0b0c10;
+        }
+
+        /* HUD Display */
+        #hud {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(22, 24, 33, 0.88);
+            backdrop-filter: blur(12px);
+            padding: 16px 22px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+            min-width: 300px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.6);
+        }
+
+        .hud-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.88rem; }
+        .hud-value { font-weight: bold; color: #fff; }
+        
+        .judge-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 0.95rem;
+        }
+        .judge-ok { background-color: var(--success); color: #fff; }
+        .judge-ng { background-color: var(--danger); color: #fff; }
+        .judge-warn { background-color: var(--warning); color: #111; }
+
+        /* HUD Mode Toggle Bar */
+        #view-controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(22, 24, 33, 0.88);
+            backdrop-filter: blur(10px);
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            gap: 6px;
+        }
+        .view-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-sub);
+            padding: 6px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: 0.2s;
+        }
+        .view-btn.active { background: var(--accent); color: #fff; font-weight: bold; }
+        .view-btn:hover:not(.active) { color: #fff; background: rgba(255,255,255,0.05); }
+
+        /* Color Bar Legend */
+        #legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(22, 24, 33, 0.88);
+            backdrop-filter: blur(10px);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.8rem;
+        }
+        .color-ramp {
+            width: 160px;
+            height: 12px;
+            background: linear-gradient(to right, blue, cyan, green, yellow, red);
+            border-radius: 3px;
+        }
+
+        /* Loading Spinner Overlay */
+        #loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(11, 12, 16, 0.75);
+            backdrop-filter: blur(4px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        #loading-overlay.active { opacity: 1; pointer-events: auto; }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid rgba(0, 180, 216, 0.2);
+            border-top: 4px solid var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 12px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div id="loading-text" style="color: #fff; font-size: 0.9rem;">DXF解析中...</div>
+    </div>
+
+    <!-- Sidebar Input Controls -->
+    <div id="sidebar">
+        <h2><i class="fa-solid fa-microchip"></i> リフロー反り解析設定</h2>
+
+        <!-- 1. DXF Upload -->
+        <div class="section">
+            <div class="section-title"><i class="fa-solid fa-file-code"></i> 1. パネルDXFデータ読み込み</div>
+            <div class="file-upload" onclick="document.getElementById('dxf-file').click()" id="drop-zone">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+                <div id="file-label" style="font-size: 0.85rem; font-weight: 500;">DXFファイルを指定/ドロップ</div>
+                <small style="color: var(--text-sub); font-size: 0.72rem;">LINE / LWPOLYLINE / CIRCLE / ARC対応</small>
+                <input type="file" id="dxf-file" accept=".dxf" style="display:none" onchange="handleFileSelect(this.files)">
+            </div>
+        </div>
+
+        <!-- 2. Auto-parsed DXF Geometric Info -->
+        <div class="section">
+            <div class="section-title"><i class="fa-solid fa-vector-square"></i> 2. DXF自動解析情報</div>
+            <div class="form-group"><label>パネル外形 (X × Y):</label><span id="info-panel-size" style="font-weight:600; color:#4ea8de;">-</span></div>
+            <div class="form-group"><label>検知面付数 (pcs):</label><span id="info-pcs-count" style="font-weight:600; color:#4ea8de;">-</span></div>
+            <div class="form-group"><label>平均スリット幅:</label><span id="info-slit-width" style="font-weight:600; color:#4ea8de;">-</span></div>
+            <div class="form-group"><label>開口・切削率:</label><span id="info-cutout-ratio" style="font-weight:600; color:#4ea8de;">-</span></div>
+        </div>
+
+        <!-- 3. Substrate & Layer Parameters -->
+        <div class="section">
+            <div class="section-title"><i class="fa-solid fa-layer-group"></i> 3. 基板積層・材料設定</div>
+            <div class="form-group">
+                <label>基材タイプ:</label>
+                <select id="mat-type" onchange="runSimulation()">
+                    <option value="fr4_standard">標準 FR-4 (Tg 140℃)</option>
+                    <option value="fr4_high_tg" selected>高Tg FR-4 (Tg 170℃)</option>
+                    <option value="polyimide">ポリイミド (Tg 220℃)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>層数 (Layer):</label>
+                <input type="number" id="layer-count" value="4" min="1" max="32" onchange="runSimulation()">
+            </div>
+            <div class="form-group">
+                <label>基板板厚 (mm):</label>
+                <input type="number" id="board-thick" value="1.6" step="0.1" min="0.2" onchange="runSimulation()">
+            </div>
+            <div class="form-group">
+                <label>銅箔厚 (μm):</label>
+                <input type="number" id="copper-thick" value="35" step="5" min="9" onchange="runSimulation()">
+            </div>
+            <div class="form-group">
+                <label>残銅率上下差 (%):</label>
+                <input type="number" id="cu-ratio-diff" value="15" step="1" title="Top面とBottom面の残銅率の不均衡性" onchange="runSimulation()">
+            </div>
+        </div>
+
+        <!-- 4. Component Weight & Reflow Profile -->
+        <div class="section">
+            <div class="section-title"><i class="fa-solid fa-temperature-arrow-up"></i> 4. 部品重量 & リフロー条件</div>
+            <div class="form-group">
+                <label>1pcs部品重量 (g):</label>
+                <input type="number" id="comp-weight" value="10.0" step="0.5" min="0" onchange="runSimulation()">
+            </div>
+            <div class="form-group">
+                <label>ピーク温度 (°C):</label>
+                <input type="number" id="reflow-temp" value="250" step="5" min="150" max="300" onchange="runSimulation()">
+            </div>
+            <div class="form-group">
+                <label>搬送支持形態:</label>
+                <select id="support-type" onchange="runSimulation()">
+                    <option value="2edge">左右2辺搬送 (コンベア)</option>
+                    <option value="4corner">4角支持 (パレット固定)</option>
+                </select>
+            </div>
+        </div>
+
+        <button class="btn-calc" onclick="runSimulation()">
+            <i class="fa-solid fa-calculator"></i> シミュレーション再計算
+        </button>
+    </div>
+
+    <!-- Main View Canvas -->
+    <div id="main-view">
+        <div id="view-controls">
+            <button class="view-btn active" onclick="setWireframeMode(false, this)"><i class="fa-solid fa-cube"></i> ソリッド (コンター)</button>
+            <button class="view-btn" onclick="setWireframeMode(true, this)"><i class="fa-solid fa-border-all"></i> メッシュワイヤー</button>
+            <button class="view-btn" onclick="resetCamera()"><i class="fa-solid fa-arrows-to-dot"></i> 視点リセット</button>
+        </div>
+
+        <div id="canvas-container"></div>
+
+        <!-- Result HUD -->
+        <div id="hud">
+            <div class="hud-item"><span>総搭載部品重量:</span><span class="hud-value" id="res-total-weight">- g</span></div>
+            <div class="hud-item"><span>最大反り量 (Z Max):</span><span class="hud-value" id="res-warpage-mm">- mm</span></div>
+            <div class="hud-item"><span>反り率 (対角長比):</span><span class="hud-value" id="res-warpage-ratio">- %</span></div>
+            <div class="hud-item"><span>許容標準 (IPC-2221):</span><span class="hud-value">0.75 % 以下</span></div>
+            <div class="judge-badge" id="res-badge"><i class="fa-solid fa-circle-info"></i> DXF読み込み待ち</div>
+        </div>
+
+        <!-- Color Ramp Legend -->
+        <div id="legend">
+            <span>変位 Min (0mm)</span>
+            <div class="color-ramp"></div>
+            <span>Max (Z反り)</span>
+        </div>
+    </div>
+
+    <script>
+        // Global State & Three.js Objects
+        let scene, camera, renderer, controls, pcbGroup;
+        let isWireframe = false;
+
+        // Current Parsed DXF Geometry Information
+        let parsedDXF = {
+            width: 200,          // mm
+            height: 150,         // mm
+            pcsCount: 1,         // Auto detected pcs count
+            slitWidth: 0.0,      // Auto detected average slit width (mm)
+            outerBounds: { minX:-100, maxX:100, minY:-75, maxY:75 },
+            outerPoly: [],       // Points forming outer boundary
+            innerHoles: [],      // Array of point arrays for slits/cutouts
+            totalArea: 30000,
+            cutoutRatio: 0.0     // %
+        };
+
+        // Initialize 3D Graphics Scene
+        window.addEventListener('load', () => {
+            init3D();
+            setupDragAndDrop();
+            createDefaultBoardGeometry();
+        });
+
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0b0c10);
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 3000);
+            camera.position.set(0, -220, 220);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Ambient & Directional Lighting
+            const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambient);
+
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight1.position.set(200, -200, 300);
+            scene.add(dirLight1);
+
+            const dirLight2 = new THREE.DirectionalLight(0x90e0ef, 0.4);
+            dirLight2.position.set(-200, 200, -100);
+            scene.add(dirLight2);
+
+            // Ground Reference Grid
+            const grid = new THREE.GridHelper(600, 60, 0x3a3f58, 0x1a1c23);
+            grid.rotation.x = Math.PI / 2;
+            scene.add(grid);
+
+            pcbGroup = new THREE.Group();
+            scene.add(pcbGroup);
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function resetCamera() {
+            camera.position.set(0, -Math.max(parsedDXF.width, parsedDXF.height) * 1.3, Math.max(parsedDXF.width, parsedDXF.height) * 1.1);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        function setWireframeMode(wire, btn) {
+            isWireframe = wire;
+            document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+            if(btn) btn.classList.add('active');
+            runSimulation();
+        }
+
+        // Drag and Drop Handling
+        function setupDragAndDrop() {
+            const zone = document.getElementById('drop-zone');
+            window.addEventListener('dragover', e => e.preventDefault());
+            window.addEventListener('drop', e => e.preventDefault());
+
+            zone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                zone.style.background = 'rgba(0, 180, 216, 0.2)';
+            });
+            zone.addEventListener('dragleave', () => {
+                zone.style.background = 'rgba(0, 180, 216, 0.04)';
+            });
+            zone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                zone.style.background = 'rgba(0, 180, 216, 0.04)';
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    handleFileSelect(e.dataTransfer.files);
+                }
+            });
+        }
+
+        function handleFileSelect(files) {
+            if (!files || files.length === 0) return;
+            const file = files[0];
+            document.getElementById('file-label').innerHTML = `<i class="fa-solid fa-file-circle-check"></i> ${file.name}`;
+
+            showLoading(true, "DXF幾何データ抽出中...");
+
+            setTimeout(() => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        parseFullDXF(e.target.result);
+                        runSimulation();
+                    } catch (err) {
+                        alert("DXFの解析中にエラーが発生しました: " + err.message);
+                    } finally {
+                        showLoading(false);
+                    }
+                };
+                reader.readAsText(file);
+            }, 50);
+        }
+
+        function showLoading(show, text="解析中...") {
+            const overlay = document.getElementById('loading-overlay');
+            document.getElementById('loading-text').innerText = text;
+            if(show) overlay.classList.add('active');
+            else overlay.classList.remove('active');
+        }
+
+        // --- Robust DXF Entity Parser ---
+        function parseFullDXF(dxfText) {
+            const lines = dxfText.split(/\r?\n/);
+            let entities = [];
+            let inEntitiesSection = false;
+            let currentEntity = null;
+
+            for (let i = 0; i < lines.length; i++) {
+                const code = lines[i].trim();
+                const val = (i + 1 < lines.length) ? lines[i + 1].trim() : "";
+
+                if (code === '2' && val === 'ENTITIES') {
+                    inEntitiesSection = true;
+                    i++; continue;
+                }
+                if (code === '0' && val === 'ENDSEC') {
+                    if (inEntitiesSection) {
+                        if (currentEntity) entities.push(currentEntity);
+                        inEntitiesSection = false;
+                    }
+                }
+
+                if (inEntitiesSection && code === '0') {
+                    if (currentEntity) entities.push(currentEntity);
+                    currentEntity = { type: val, vertices: [] };
+                    i++; continue;
+                }
+
+                if (inEntitiesSection && currentEntity) {
+                    const groupCode = parseInt(code, 10);
+                    if (groupCode === 10) {
+                        currentEntity.currentX = parseFloat(val);
+                    } else if (groupCode === 20) {
+                        currentEntity.currentY = parseFloat(val);
+                        if (currentEntity.type === 'LWPOLYLINE' || currentEntity.type === 'VERTEX') {
+                            currentEntity.vertices.push({ x: currentEntity.currentX, y: currentEntity.currentY });
+                        }
+                    } else if (groupCode === 11) {
+                        currentEntity.x2 = parseFloat(val);
+                    } else if (groupCode === 21) {
+                        currentEntity.y2 = parseFloat(val);
+                        if (currentEntity.type === 'LINE') {
+                            currentEntity.vertices = [
+                                { x: currentEntity.currentX, y: currentEntity.currentY },
+                                { x: currentEntity.x2, y: currentEntity.y2 }
+                            ];
+                        }
+                    } else if (groupCode === 40) {
+                        currentEntity.radius = parseFloat(val);
+                    } else if (groupCode === 50) {
+                        currentEntity.startAngle = parseFloat(val);
+                    } else if (groupCode === 51) {
+                        currentEntity.endAngle = parseFloat(val);
+                    } else if (groupCode === 70) {
+                        currentEntity.closed = (parseInt(val, 10) & 1) !== 0;
+                    }
+                    i++;
+                }
+            }
+            if (currentEntity) entities.push(currentEntity);
+
+            // Compute overall bounding box
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            let segments = [];
+
+            entities.forEach(ent => {
+                if (ent.type === 'LINE' && ent.vertices.length === 2) {
+                    segments.push(ent.vertices);
+                    updateBounds(ent.vertices[0]); updateBounds(ent.vertices[1]);
+                } else if (ent.type === 'LWPOLYLINE' && ent.vertices.length > 1) {
+                    for (let j = 0; j < ent.vertices.length - 1; j++) {
+                        segments.push([ent.vertices[j], ent.vertices[j+1]]);
+                        updateBounds(ent.vertices[j]);
+                    }
+                    updateBounds(ent.vertices[ent.vertices.length - 1]);
+                    if (ent.closed) {
+                        segments.push([ent.vertices[ent.vertices.length - 1], ent.vertices[0]]);
+                    }
+                } else if (ent.type === 'CIRCLE' && ent.currentX !== undefined && ent.radius) {
+                    const cx = ent.currentX, cy = ent.currentY, r = ent.radius;
+                    updateBounds({ x: cx - r, y: cy - r });
+                    updateBounds({ x: cx + r, y: cy + r });
+                    // Approximate circle with polyline loop
+                    let cVerts = [];
+                    for(let a=0; a<360; a+=30) {
+                        const rad = a * Math.PI / 180;
+                        cVerts.push({ x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) });
+                    }
+                    for(let j=0; j<cVerts.length; j++) {
+                        segments.push([cVerts[j], cVerts[(j+1)%cVerts.length]]);
+                    }
+                }
+            });
+
+            function updateBounds(pt) {
+                if (pt.x < minX) minX = pt.x;
+                if (pt.x > maxX) maxX = pt.x;
+                if (pt.y < minY) minY = pt.y;
+                if (pt.y > maxY) maxY = pt.y;
+            }
+
+            if (minX === Infinity || maxX === -Infinity) {
+                // Default rectangle fallback if DXF had no clear 2D entities
+                minX = -100; maxX = 100; minY = -75; maxY = 75;
+            }
+
+            const pWidth = Math.round((maxX - minX) * 10) / 10;
+            const pHeight = Math.round((maxY - minY) * 10) / 10;
+
+            // Reconstruct Closed Loops / Cutouts / Slits
+            const loops = findClosedLoops(segments);
+            
+            // Outer loop is the loop with max bounding area
+            let outerLoop = null;
+            let maxArea = -1;
+            let innerHoles = [];
+
+            loops.forEach(loop => {
+                const area = Math.abs(polygonArea(loop));
+                if (area > maxArea) {
+                    if (outerLoop) innerHoles.push(outerLoop);
+                    maxArea = area;
+                    outerLoop = loop;
+                } else {
+                    innerHoles.push(loop);
+                }
+            });
+
+            // Fallback outer boundary if loop extraction didn't yield a valid outer loop
+            if (!outerLoop || outerLoop.length < 3) {
+                outerLoop = [
+                    { x: minX, y: minY },
+                    { x: maxX, y: minY },
+                    { x: maxX, y: maxY },
+                    { x: minX, y: maxY }
+                ];
+            }
+
+            // Center all points around (0,0) for clean 3D rendering
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+
+            const centeredOuter = outerLoop.map(p => ({ x: p.x - centerX, y: p.y - centerY }));
+            const centeredHoles = innerHoles.map(hole => hole.map(p => ({ x: p.x - centerX, y: p.y - centerY })));
+
+            // Detect Pcs Count and Slit Width from Geometry
+            let detectedPcs = 1;
+            let detectedSlitWidth = 0.0;
+
+            if (innerHoles.length > 0) {
+                // Filter holes that look like router slits / cutouts
+                let slitWidths = [];
+                innerHoles.forEach(hole => {
+                    const hBounds = getPolygonBounds(hole);
+                    const hW = hBounds.maxX - hBounds.minX;
+                    const hH = hBounds.maxY - hBounds.minY;
+                    const minDim = Math.min(hW, hH);
+                    if (minDim > 0.3 && minDim < 10.0) {
+                        slitWidths.push(minDim);
+                    }
+                });
+
+                if (slitWidths.length > 0) {
+                    detectedSlitWidth = slitWidths.reduce((a,b)=>a+b, 0) / slitWidths.length;
+                    detectedPcs = Math.max(2, innerHoles.length + 1); // Estimated pcs count based on slits
+                } else {
+                    // Internal cutouts exist (e.g. mounting holes/board cutouts), but no slits
+                    detectedPcs = Math.max(1, innerHoles.length);
+                    detectedSlitWidth = 0.0;
+                }
+            } else {
+                // Solid rectangular or single contour DXF -> Exactly 1 pcs, 0mm slit width!
+                detectedPcs = 1;
+                detectedSlitWidth = 0.0;
+            }
+
+            // Total Area and Cutout Percentage
+            const fullOuterArea = Math.abs(polygonArea(centeredOuter));
+            let totalHolesArea = 0;
+            centeredHoles.forEach(h => { totalHolesArea += Math.abs(polygonArea(h)); });
+            const netArea = Math.max(1, fullOuterArea - totalHolesArea);
+            const cutoutRatio = ((totalHolesArea / Math.max(1, fullOuterArea)) * 100).toFixed(1);
+
+            parsedDXF = {
+                width: pWidth,
+                height: pHeight,
+                pcsCount: detectedPcs,
+                slitWidth: Math.round(detectedSlitWidth * 10) / 10,
+                outerBounds: { minX: minX - centerX, maxX: maxX - centerX, minY: minY - centerY, maxY: maxY - centerY },
+                outerPoly: centeredOuter,
+                innerHoles: centeredHoles,
+                totalArea: netArea,
+                cutoutRatio: cutoutRatio
+            };
+
+            // Update UI HUD Info
+            document.getElementById('info-panel-size').innerText = `${parsedDXF.width} × ${parsedDXF.height} mm`;
+            document.getElementById('info-pcs-count').innerText = `${parsedDXF.pcsCount} pcs`;
+            document.getElementById('info-slit-width').innerText = `${parsedDXF.slitWidth.toFixed(1)} mm`;
+            document.getElementById('info-cutout-ratio').innerText = `${parsedDXF.cutoutRatio} %`;
+        }
+
+        // Polygon Helper Functions
+        function getPolygonBounds(poly) {
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            poly.forEach(p => {
+                if (p.x < minX) minX = p.x;
+                if (p.x > maxX) maxX = p.x;
+                if (p.y < minY) minY = p.y;
+                if (p.y > maxY) maxY = p.y;
+            });
+            return { minX, maxX, minY, maxY };
+        }
+
+        function polygonArea(poly) {
+            let area = 0;
+            for (let i = 0; i < poly.length; i++) {
+                let j = (i + 1) % poly.length;
+                area += poly[i].x * poly[j].y;
+                area -= poly[j].x * poly[i].y;
+            }
+            return area / 2;
+        }
+
+        function findClosedLoops(segments) {
+            let loops = [];
+            let unvisited = [...segments];
+            const tolerance = 0.5; // mm connectivity tolerance
+
+            while (unvisited.length > 0) {
+                let currentLoop = [];
+                let seg = unvisited.shift();
+                currentLoop.push(seg[0]);
+                let currentPt = seg[1];
+
+                let foundNext = true;
+                while (foundNext && unvisited.length > 0) {
+                    foundNext = false;
+                    for (let i = 0; i < unvisited.length; i++) {
+                        const s = unvisited[i];
+                        if (dist2D(currentPt, s[0]) < tolerance) {
+                            currentLoop.push(currentPt);
+                            currentPt = s[1];
+                            unvisited.splice(i, 1);
+                            foundNext = true;
+                            break;
+                        } else if (dist2D(currentPt, s[1]) < tolerance) {
+                            currentLoop.push(currentPt);
+                            currentPt = s[0];
+                            unvisited.splice(i, 1);
+                            foundNext = true;
+                            break;
+                        }
+                    }
+
+                    // Check if loop closed back to start
+                    if (dist2D(currentPt, currentLoop[0]) < tolerance) {
+                        loops.push(currentLoop);
+                        break;
+                    }
+                }
+            }
+            return loops;
+        }
+
+        function dist2D(p1, p2) {
+            return Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2);
+        }
+
+        function createDefaultBoardGeometry() {
+            // Initial default rectangle panel (200x150 mm)
+            const w = 200, h = 150;
+            parsedDXF = {
+                width: w,
+                height: h,
+                pcsCount: 1,
+                slitWidth: 0.0,
+                outerBounds: { minX: -w/2, maxX: w/2, minY: -h/2, maxY: h/2 },
+                outerPoly: [
+                    { x: -w/2, y: -h/2 },
+                    { x: w/2, y: -h/2 },
+                    { x: w/2, y: h/2 },
+                    { x: -w/2, y: h/2 }
+                ],
+                innerHoles: [],
+                totalArea: w * h,
+                cutoutRatio: 0.0
+            };
+
+            document.getElementById('info-panel-size').innerText = `${w} × ${h} mm`;
+            document.getElementById('info-pcs-count').innerText = `1 pcs`;
+            document.getElementById('info-slit-width').innerText = `0.0 mm`;
+            document.getElementById('info-cutout-ratio').innerText = `0.0 %`;
+
+            runSimulation();
+        }
+
+        // --- Core Warpage Physics Simulator & 3D Renderer ---
+        function runSimulation() {
+            // Read UI Parameters
+            const matType = document.getElementById('mat-type').value;
+            const layers = parseInt(document.getElementById('layer-count').value, 10);
+            const thickness = parseFloat(document.getElementById('board-thick').value);
+            const copperThickness = parseFloat(document.getElementById('copper-thick').value) / 1000; // mm
+            const cuDiff = parseFloat(document.getElementById('cu-ratio-diff').value) / 100;
+            const compWeightPerPcs = parseFloat(document.getElementById('comp-weight').value);
+            const reflowTemp = parseFloat(document.getElementById('reflow-temp').value);
+            const support = document.getElementById('support-type').value;
+
+            // Material Property Adjustment (Glass Transition Temperature Tg)
+            let E_base = 22000; // MPa (25°C)
+            let cte_base = 14e-6; // /°C
+            
+            if (reflowTemp > 170) {
+                // Modulus drops post-Tg
+                E_base = (matType === 'fr4_high_tg') ? 9500 : (matType === 'polyimide' ? 14000 : 4500);
+                cte_base = (matType === 'polyimide') ? 22e-6 : 60e-6;
+            }
+
+            const E_copper = 110000; // Copper Modulus (MPa)
+            const cte_copper = 17e-6;
+
+            // Thermal Bimetallic Warpage Curvature
+            const deltaT = reflowTemp - 25;
+            const thermalMismatch = (cte_copper - cte_base) * deltaT;
+            const thermalCurvature = (thermalMismatch * cuDiff * (copperThickness / thickness)) / (thickness * 0.5);
+
+            // Total Component Weight Calculation
+            const totalCompMassGram = compWeightPerPcs * parsedDXF.pcsCount;
+            const boardDensity = 1.9e-3; // g/mm3
+            const boardMassGram = parsedDXF.totalArea * thickness * boardDensity;
+            const totalWeightGram = totalCompMassGram + boardMassGram;
+            const totalForceN = (totalWeightGram / 1000) * 9.81; // Force in Newtons
+
+            // Moment of Inertia I with Slit Reduction Factor
+            const slitFactor = 1.0 - (0.35 * Math.min(1.0, parsedDXF.slitWidth / 3.0));
+            const I_panel = (parsedDXF.width * Math.pow(thickness, 3) / 12) * slitFactor;
+
+            // Deflection due to Gravity Load
+            const L = (support === '2edge') ? parsedDXF.height : Math.min(parsedDXF.width, parsedDXF.height);
+            const gravityDeflection = (5 * totalForceN * Math.pow(L, 3)) / (384 * E_base * I_panel);
+
+            // Total Combined Z-Warpage (mm)
+            const maxWarpageZ = Math.abs(thermalCurvature * Math.pow(L, 2) / 8) + gravityDeflection;
+
+            // Warpage Ratio (%) based on Diagonal Length
+            const diagonalLength = Math.sqrt(Math.pow(parsedDXF.width, 2) + Math.pow(parsedDXF.height, 2));
+            const warpageRatio = (maxWarpageZ / diagonalLength) * 100;
+
+            // Update Result HUD
+            document.getElementById('res-total-weight').innerText = `${totalWeightGram.toFixed(1)} g (基板:${boardMassGram.toFixed(0)}g + 部品:${totalCompMassGram.toFixed(0)}g)`;
+            document.getElementById('res-warpage-mm').innerText = `${maxWarpageZ.toFixed(2)} mm`;
+            document.getElementById('res-warpage-ratio').innerText = `${warpageRatio.toFixed(2)} %`;
+
+            const badge = document.getElementById('res-badge');
+            if (warpageRatio <= 0.5) {
+                badge.className = 'judge-badge judge-ok';
+                badge.innerHTML = '<i class="fa-solid fa-circle-check"></i> 判定: 良好 (合致)';
+            } else if (warpageRatio <= 0.75) {
+                badge.className = 'judge-badge judge-warn';
+                badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> 判定: 許容内 (注意)';
+            } else {
+                badge.className = 'judge-badge judge-ng';
+                badge.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> 判定: 規格超過 (NG)';
+            }
+
+            // Build 3D Mesh with Computed DXF Geometry
+            build3DWarpedMesh(maxWarpageZ, thickness);
+        }
+
+        function build3DWarpedMesh(maxZ, boardThickness) {
+            // Clear existing mesh
+            while (pcbGroup.children.length > 0) {
+                const child = pcbGroup.children[0];
+                if (child.geometry) child.geometry.dispose();
+                pcbGroup.remove(child);
+            }
+
+            // 1. Create 2D THREE.Shape matching exact DXF contour & holes
+            const shape = new THREE.Shape();
+            const outer = parsedDXF.outerPoly;
+
+            if (outer.length > 0) {
+                shape.moveTo(outer[0].x, outer[0].y);
+                for (let i = 1; i < outer.length; i++) {
+                    shape.lineTo(outer[i].x, outer[i].y);
+                }
+                shape.closePath();
+            }
+
+            // Add holes/slits
+            parsedDXF.innerHoles.forEach(hole => {
+                if (hole.length > 2) {
+                    const holePath = new THREE.Path();
+                    holePath.moveTo(hole[0].x, hole[0].y);
+                    for (let i = 1; i < hole.length; i++) {
+                        holePath.lineTo(hole[i].x, hole[i].y);
+                    }
+                    holePath.closePath();
+                    shape.holes.push(holePath);
+                }
+            });
+
+            // 2. Extrude to 3D Board
+            const extrudeSettings = {
+                depth: boardThickness,
+                bevelEnabled: false,
+                curveSegments: 16,
+                steps: 1
+            };
+
+            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            geometry.center(); // Center geometry origin
+
+            // 3. Deform Mesh Vertices according to Warpage Equation
+            const posAttr = geometry.attributes.position;
+            const colors = [];
+            const colorRamp = [
+                new THREE.Color(0x0000ff), // Min (Blue)
+                new THREE.Color(0x00ffff), // Cyan
+                new THREE.Color(0x00ff00), // Green
+                new THREE.Color(0xffff00), // Yellow
+                new THREE.Color(0xff0000)  // Max (Red)
+            ];
+
+            const halfW = parsedDXF.width / 2;
+            const halfH = parsedDXF.height / 2;
+
+            for (let i = 0; i < posAttr.count; i++) {
+                const x = posAttr.getX(i);
+                const y = posAttr.getY(i);
+
+                // Normalized [-1, 1] coordinates
+                const nx = x / (halfW || 1);
+                const ny = y / (halfH || 1);
+
+                // Quadric Dish/Bowl Warpage Model
+                const distNormalized = (nx * nx + ny * ny) / 2.0;
+                
+                // Visual Amplification Factor for 3D View Clarity
+                const visualZ = distNormalized * (maxZ * 2.5);
+
+                posAttr.setZ(i, posAttr.getZ(i) + visualZ);
+
+                // Heatmap Color Assignment
+                const t = Math.min(Math.max(visualZ / Math.max(0.1, maxZ * 2.5), 0), 1);
+                const colorIdx = t * (colorRamp.length - 1);
+                const baseIdx = Math.floor(colorIdx);
+                const lerpFactor = colorIdx - baseIdx;
+
+                const c1 = colorRamp[baseIdx];
+                const c2 = colorRamp[Math.min(baseIdx + 1, colorRamp.length - 1)];
+                const finalCol = c1.clone().lerp(c2, lerpFactor);
+
+                colors.push(finalCol.r, finalCol.g, finalCol.b);
+            }
+
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.computeVertexNormals();
+
+            // Material Definition
+            const material = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                roughness: 0.35,
+                metalness: 0.25,
+                wireframe: isWireframe
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.rotation.x = -Math.PI / 2; // Flat horizontal alignment
+            pcbGroup.add(mesh);
+
+            // Re-adjust camera smoothly
+            controls.target.set(0, 0, 0);
+        }
+    </script>
+</body>
+</html>
