@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PCB Panel 3D Mesh Viewer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #1a1a1a; color: #fff; font-family: sans-serif; }
+    #canvas-container { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body class="flex flex-col h-screen">
+  <!-- Controls Overlay -->
+  <div class="absolute top-4 left-4 z-10 bg-gray-900/90 p-4 rounded-lg shadow-lg border border-gray-700 max-w-sm w-full backdrop-blur-sm">
+    <h1 class="text-lg font-bold mb-3 text-green-400">PCB Panel 3D Viewer</h1>
+    
+    <!-- File Input -->
+    <div class="mb-4">
+      <label class="block text-xs font-semibold text-gray-300 mb-1">DXFファイル選択</label>
+      <input type="file" id="dxf-file" accept=".dxf" class="w-full text-xs text-gray-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-500 cursor-pointer"/>
+    </div>
+
+    <!-- Warp Scale Control -->
+    <div class="mb-4">
+      <div class="flex justify-between items-center mb-1">
+        <label class="text-xs font-semibold text-gray-300">基板反り（Warp）倍率</label>
+        <span id="warp-value" class="text-xs text-green-400 font-mono">1.0x</span>
+      </div>
+      <input type="range" id="warp-scale" min="0" max="20" step="0.5" value="1" class="w-full accent-green-500 cursor-pointer">
+    </div>
+
+    <!-- Info / Stats Panel -->
+    <div class="bg-gray-800/80 p-3 rounded text-xs space-y-1.5 border border-gray-700">
+      <div class="font-bold text-gray-200 border-b border-gray-700 pb-1 mb-1">レイヤー検出 & 判定結果</div>
+      <div class="flex justify-between">
+        <span class="text-gray-400">単品基板 (PCS) 数:</span>
+        <span id="pcs-count" class="font-bold text-yellow-400">0</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-gray-400">捨て板 (Waste):</span>
+        <span id="waste-count" class="font-bold text-gray-300">0</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-gray-400">ミシン目 (Mousebites):</span>
+        <span id="perforation-count" class="font-bold text-blue-400">0</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-gray-400">ルーター抜き (Router):</span>
+        <span id="router-count" class="font-bold text-red-400">0</span>
+      </div>
+    </div>
+
+    <div class="mt-3 text-[10px] text-gray-400">
+      * レイヤー名対応:
+      <ul class="list-disc list-inside mt-0.5 space-y-0.5">
+        <li>PANEL_OUTLINE (パネル基板外形)</li>
+        <li>UNIT_OUTLINE (単品基板外形)</li>
+        <li>WASTE_BOARD (捨て板)</li>
+        <li>PERFORATION (ミシン目 / Vカット)</li>
+        <li>ROUTER_CUT (ルーター抜き範囲)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 3D Canvas -->
+  <div id="canvas-container"></div>
+
+  <script>
+    // Global Variables
+    let scene, camera, renderer, controls;
+    let panelMeshGroup = new THREE.Group();
+    let currentVertices = [];
+    let baseGeometries = [];
+
+    // Layer Definitions (Supports exact and partial matching)
+    const LAYER_NAMES = {
+      PANEL: ['PANEL_OUTLINE', 'パネル外形', 'パネル基板外形'],
+      UNIT: ['UNIT_OUTLINE', '単品外形', '単品基板'],
+      WASTE: ['WASTE_BOARD', '捨て板'],
+      PERFORATION: ['PERFORATION', 'ミシン目', 'Vカット'],
+      ROUTER: ['ROUTER_CUT', 'ルーター抜き', 'ルーター']
+    };
+
+    // Initialize Three.js Scene
+    function init() {
+      const container = document.getElementById('canvas-container');
+      
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1a1a1a);
+
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+      camera.position.set(0, -150, 200);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.shadowMap.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+
+      const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight1.position.set(100, 100, 200);
+      scene.add(dirLight1);
+
+      const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+      dirLight2.position.set(-100, -100, -100);
+      scene.add(dirLight2);
+
+      // Grid Helper
+      const gridHelper = new THREE.GridHelper(300, 30, 0x444444, 0x222222);
+      gridHelper.rotation.x = Math.PI / 2;
+      scene.add(gridHelper);
+
+      scene.add(panelMeshGroup);
+
+      // Default Placeholder Demo Shape
+      createDemoPanel();
+
+      window.addEventListener('resize', onWindowResize);
+      document.getElementById('dxf-file').addEventListener('change', handleFileUpload);
+      document.getElementById('warp-scale').addEventListener('input', handleWarpChange);
+
+      animate();
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // Helper: Match Layer Names
+    function matchLayer(layerName, targets) {
+      if (!layerName) return false;
+      const upper = layerName.toUpperCase();
+      return targets.some(target => upper.includes(target.toUpperCase()));
+    }
+
+    // Process DXF File
+    function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parser = new DXFParser();
+          const dxf = parser.parseSync(e.target.result);
+          buildPanelFromDXF(dxf);
+        } catch (err) {
+          alert("DXFファイルの解析に失敗しました: " + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function buildPanelFromDXF(dxf) {
+      // Clear current group
+      while(panelMeshGroup.children.length > 0){ 
+        const obj = panelMeshGroup.children[0];
+        panelMeshGroup.remove(obj); 
+      }
+
+      let pcsCount = 0;
+      let wasteCount = 0;
+      let perfCount = 0;
+      let routerCount = 0;
+
+      // Classify Entities by Layer
+      const shapes = {
+        panel: [],
+        units: [],
+        waste: [],
+        perforations: [],
+        router: []
+      };
+
+      dxf.entities.forEach(entity => {
+        const layer = entity.layer;
+        const points = extractPointsFromEntity(entity);
+        if (points.length < 2) return;
+
+        if (matchLayer(layer, LAYER_NAMES.PANEL)) {
+          shapes.panel.push(points);
+        } else if (matchLayer(layer, LAYER_NAMES.UNIT)) {
+          shapes.units.push(points);
+          pcsCount++;
+        } else if (matchLayer(layer, LAYER_NAMES.WASTE)) {
+          shapes.waste.push(points);
+          wasteCount++;
+        } else if (matchLayer(layer, LAYER_NAMES.PERFORATION)) {
+          shapes.perforations.push(points);
+          perfCount++;
+        } else if (matchLayer(layer, LAYER_NAMES.ROUTER)) {
+          shapes.router.push(points);
+          routerCount++;
+        }
+      });
+
+      // Update Info Display
+      document.getElementById('pcs-count').innerText = pcsCount;
+      document.getElementById('waste-count').innerText = wasteCount;
+      document.getElementById('perforation-count').innerText = perfCount;
+      document.getElementById('router-count').innerText = routerCount;
+
+      // Generate 3D Meshes
+      render3DPcb(shapes);
+    }
+
+    function extractPointsFromEntity(entity) {
+      const points = [];
+      if (entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') {
+        entity.vertices.forEach(v => points.push(new THREE.Vector2(v.x, v.y)));
+      } else if (entity.type === 'LINE') {
+        points.push(new THREE.Vector2(entity.vertices[0].x, entity.vertices[0].y));
+        points.push(new THREE.Vector2(entity.vertices[1].x, entity.vertices[1].y));
+      }
+      return points;
+    }
+
+    function render3DPcb(shapes) {
+      const thickness = 1.6; // Standard PCB thickness mm
+      const fr4Material = new THREE.MeshStandardMaterial({ 
+        color: 0x005522, 
+        roughness: 0.3, 
+        metalness: 0.1,
+        side: THREE.DoubleSide 
+      });
+
+      const goldMaterial = new THREE.MeshStandardMaterial({
+        color: 0xd4af37,
+        roughness: 0.2,
+        metalness: 0.8
+      });
+
+      const wasteMaterial = new THREE.MeshStandardMaterial({
+        color: 0x113311,
+        roughness: 0.5,
+        transparent: true,
+        opacity: 0.7
+      });
+
+      // Render Units (Individual Boards)
+      shapes.units.forEach(pts => {
+        if (pts.length < 3) return;
+        const shape = new THREE.Shape(pts);
+        
+        // Subtract router holes inside units if any
+        const geom = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+        const mesh = new THREE.Mesh(geom, fr4Material);
+        panelMeshGroup.add(mesh);
+
+        // Add edge highlight line for clarity
+        const edges = new THREE.EdgesGeometry(geom);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x88ff88 }));
+        panelMeshGroup.add(line);
+      });
+
+      // Render Waste Boards
+      shapes.waste.forEach(pts => {
+        if (pts.length < 3) return;
+        const shape = new THREE.Shape(pts);
+        const geom = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+        const mesh = new THREE.Mesh(geom, wasteMaterial);
+        panelMeshGroup.add(mesh);
+      });
+
+      // Render Perforations / Mousebites (Tab connections)
+      shapes.perforations.forEach(pts => {
+        const perfGeom = new THREE.BufferGeometry().setFromPoints(pts);
+        const perfMaterial = new THREE.LineDashedMaterial({
+          color: 0xffaa00,
+          dashSize: 1,
+          gapSize: 1
+        });
+        const line = new THREE.Line(perfGeom, perfMaterial);
+        line.computeLineDistances();
+        line.position.z = thickness / 2;
+        panelMeshGroup.add(line);
+      });
+
+      // Center camera on group
+      const box = new THREE.Box3().setFromObject(panelMeshGroup);
+      const center = box.getCenter(new THREE.Vector3());
+      panelMeshGroup.position.x = -center.x;
+      panelMeshGroup.position.y = -center.y;
+
+      // Store base geometry for warp modification
+      storeBasePositions();
+      applyWarp(parseFloat(document.getElementById('warp-scale').value));
+    }
+
+    // Demo PCB Panel Generation
+    function createDemoPanel() {
+      const pcbShape = new THREE.Shape();
+      pcbShape.moveTo(-50, -30);
+      pcbShape.lineTo(50, -30);
+      pcbShape.lineTo(50, 30);
+      pcbShape.lineTo(-50, 30);
+      pcbShape.closePath();
+
+      // Extrude PCB Mesh
+      const geom = new THREE.ExtrudeGeometry(pcbShape, { depth: 1.6, bevelEnabled: false });
+      const mat = new THREE.MeshStandardMaterial({ color: 0x0e5d32, roughness: 0.3 });
+      const mesh = new THREE.Mesh(geom, mat);
+      
+      panelMeshGroup.add(mesh);
+
+      document.getElementById('pcs-count').innerText = "4 (Demo)";
+      document.getElementById('waste-count').innerText = "2 (Demo)";
+      document.getElementById('perforation-count').innerText = "8 (Demo)";
+      document.getElementById('router-count').innerText = "2 (Demo)";
+
+      storeBasePositions();
+    }
+
+    // Save initial Z positions for smooth warp dynamic updates
+    function storeBasePositions() {
+      baseGeometries = [];
+      panelMeshGroup.traverse(child => {
+        if (child.isMesh && child.geometry) {
+          const pos = child.geometry.attributes.position;
+          const initialZ = new Float32Array(pos.count);
+          for (let i = 0; i < pos.count; i++) {
+            initialZ[i] = pos.getZ(i);
+          }
+          baseGeometries.push({ mesh: child, initialZ: initialZ });
+        }
+      });
+    }
+
+    // Warp Deformation Calculation (Spherical / Cylindrical PCB bow simulation)
+    function handleWarpChange(e) {
+      const scale = parseFloat(e.target.value);
+      document.getElementById('warp-value').innerText = scale.toFixed(1) + 'x';
+      applyWarp(scale);
+    }
+
+    function applyWarp(scale) {
+      baseGeometries.forEach(item => {
+        const pos = item.mesh.geometry.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const x = pos.getX(i);
+          const y = pos.getY(i);
+          const baseZ = item.initialZ[i];
+
+          // Parabolic bow / twist formula
+          const distFromCenter = Math.sqrt(x * x + y * y);
+          const warpOffset = 0.0008 * (x * x + y * y) * scale;
+
+          pos.setZ(i, baseZ + warpOffset);
+        }
+        pos.needsUpdate = true;
+        item.mesh.geometry.computeVertexNormals();
+      });
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
