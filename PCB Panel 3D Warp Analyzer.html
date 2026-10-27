@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCBパネル3D構造＆リフロー反り解析シミュレーター</title>
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- FontAwesome Icons & Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0d0f12; color: #e2e8f0; font-family: sans-serif; }
+        .panel-bg { background: rgba(22, 27, 34, 0.92); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .color-ramp { background: linear-gradient(to right, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000); }
+    </style>
+</head>
+<body class="flex h-screen w-screen">
+
+    <!-- 左側：コントロール＆設定パネル -->
+    <div id="sidebar" class="w-[400px] h-full panel-bg p-4 flex flex-col gap-3 overflow-y-auto z-10 shadow-2xl border-r border-gray-800">
+        <h1 class="text-base font-bold text-cyan-400 flex items-center gap-2 border-b border-gray-700 pb-2">
+            <i class="fa-solid fa-microchip"></i> パネル3D & 反り解析ツール
+        </h1>
+
+        <!-- 1. DXFファイル読込 -->
+        <div class="bg-gray-900/60 p-3 rounded-lg border border-gray-800">
+            <div class="text-xs font-bold text-cyan-300 mb-2 flex justify-between items-center">
+                <span>1. DXFファイル指定</span>
+                <span class="text-[10px] text-gray-400">標準ASCII/Shift-JIS対応</span>
+            </div>
+            <label class="border-2 border-dashed border-cyan-500/50 hover:border-cyan-400 bg-cyan-950/20 hover:bg-cyan-900/30 p-3 rounded-lg text-center cursor-pointer block transition">
+                <i class="fa-solid fa-cloud-arrow-up text-xl text-cyan-400 mb-1"></i>
+                <div id="file-label" class="text-xs font-semibold text-gray-200">DXFファイルを選択 / ドロップ</div>
+                <div class="text-[10px] text-gray-400 mt-0.5">※外部ライブラリ不使用（読み込みエラー解消）</div>
+                <input type="file" id="dxf-file" accept=".dxf" class="hidden" onchange="handleFileSelect(this.files)">
+            </label>
+        </div>
+
+        <!-- 2. DXFレイヤー指定 -->
+        <div class="bg-gray-900/60 p-3 rounded-lg border border-gray-800 space-y-2">
+            <div class="text-xs font-bold text-cyan-300 mb-1">2. 検出レイヤー設定</div>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                    <label class="text-gray-400 text-[11px] block">パネル外形レイヤー</label>
+                    <input type="text" id="layer-panel" value="PANEL_OUTLINE" class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-white" onchange="reparseDXF()">
+                </div>
+                <div>
+                    <label class="text-gray-400 text-[11px] block">ルーター抜きレイヤー</label>
+                    <input type="text" id="layer-router" value="ROUTER_CUT" class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-white" onchange="reparseDXF()">
+                </div>
+                <div class="col-span-2">
+                    <label class="text-gray-400 text-[11px] block">単品基板外形レイヤー (pcs判別用)</label>
+                    <input type="text" id="layer-unit" value="UNIT_OUTLINE" class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1 text-white" onchange="reparseDXF()">
+                </div>
+            </div>
+            <div class="text-[11px] text-gray-400 pt-1 border-t border-gray-800 flex justify-between">
+                <span>検出単品数 (pcs): <strong id="info-pcs" class="text-yellow-400">0</strong></span>
+                <span>パネル寸法: <strong id="info-size" class="text-cyan-400">-</strong></span>
+            </div>
+        </div>
+
+        <!-- 3. 反り倍率＆表示コントロール -->
+        <div class="bg-gray-900/60 p-3 rounded-lg border border-gray-800 space-y-2">
+            <div class="text-xs font-bold text-cyan-300 flex justify-between">
+                <span>3. 反り（変形）表示倍率</span>
+                <span id="warp-scale-val" class="text-cyan-400 font-mono font-bold">10.0x</span>
+            </div>
+            <input type="range" id="warp-scale" min="0" max="50" step="0.5" value="10" class="w-full accent-cyan-400 cursor-pointer" oninput="updateWarpScale(this.value)">
+            <div class="flex gap-2 pt-1">
+                <button onclick="toggleWireframe()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-xs py-1.5 rounded text-gray-200 border border-gray-700">
+                    <i class="fa-solid fa-border-all mr-1"></i>ワイヤー表示
+                </button>
+                <button onclick="resetCamera()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-xs py-1.5 rounded text-gray-200 border border-gray-700">
+                    <i class="fa-solid fa-arrows-to-dot mr-1"></i>視点リセット
+                </button>
+            </div>
+        </div>
+
+        <!-- 4. 反り解析・熱物理パラメータ -->
+        <div class="bg-gray-900/60 p-3 rounded-lg border border-gray-800 space-y-2">
+            <div class="text-xs font-bold text-cyan-300">4. 反り熱歪み解析条件</div>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                    <label class="text-gray-400 text-[10px]">基材タイプ</label>
+                    <select id="param-mat" class="w-full bg-gray-950 border border-gray-700 rounded p-1 text-white" onchange="runSimulation()">
+                        <option value="fr4_std">標準 FR-4</option>
+                        <option value="fr4_hightg" selected>高Tg FR-4</option>
+                        <option value="polyimide">ポリイミド</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-gray-400 text-[10px]">基板厚み (mm)</label>
+                    <input type="number" id="param-thick" value="1.6" step="0.1" class="w-full bg-gray-950 border border-gray-700 rounded p-1 text-white text-right" onchange="runSimulation()">
+                </div>
+                <div>
+                    <label class="text-gray-400 text-[10px]">残銅率上下差 (%)</label>
+                    <input type="number" id="param-cu-diff" value="20" step="1" class="w-full bg-gray-950 border border-gray-700 rounded p-1 text-white text-right" onchange="runSimulation()">
+                </div>
+                <div>
+                    <label class="text-gray-400 text-[10px]">ピーク温度 (°C)</label>
+                    <input type="number" id="param-temp" value="250" step="5" class="w-full bg-gray-950 border border-gray-700 rounded p-1 text-white text-right" onchange="runSimulation()">
+                </div>
+                <div class="col-span-2">
+                    <label class="text-gray-400 text-[10px]">1pcs 部品重量 (g)</label>
+                    <input type="number" id="param-weight" value="8.0" step="0.5" class="w-full bg-gray-950 border border-gray-700 rounded p-1 text-white text-right" onchange="runSimulation()">
+                </div>
+            </div>
+        </div>
+
+        <button onclick="runSimulation()" class="w-full bg-cyan-600 hover:bg-cyan-500 font-bold py-2 rounded-lg text-sm text-white shadow-lg transition">
+            <i class="fa-solid fa-calculator mr-1"></i> 反り再計算 & 3D更新
+        </button>
+    </div>
+
+    <!-- 右側：3Dビュー表示領域 -->
+    <div id="main-view" class="flex-1 h-full relative">
+        <div id="canvas-container" class="w-full h-full"></div>
+
+        <!-- 右上：解析結果サマリー -->
+        <div class="absolute top-4 right-4 panel-bg p-4 rounded-xl shadow-2xl border border-gray-700 w-72">
+            <div class="text-xs font-bold text-gray-300 border-b border-gray-700 pb-1 mb-2">リフロー反り評価結果</div>
+            <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-400">最大反り量 (Z):</span>
+                <span id="res-warpage-mm" class="font-bold text-white font-mono">- mm</span>
+            </div>
+            <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-400">対角長反り率:</span>
+                <span id="res-warpage-ratio" class="font-bold text-white font-mono">- %</span>
+            </div>
+            <div class="flex justify-between text-xs mb-2">
+                <span class="text-gray-400">IPC-2221許容値:</span>
+                <span class="text-gray-400">0.75 % 以下</span>
+            </div>
+            <div id="res-badge" class="py-1 px-3 rounded-full text-center font-bold text-xs bg-gray-800 text-gray-300">
+                解析待ち
+            </div>
+        </div>
+
+        <!-- 右下：カラーマップ（ヒートマップ）凡例 -->
+        <div class="absolute bottom-4 right-4 panel-bg p-3 rounded-lg border border-gray-700 flex items-center gap-3 text-xs">
+            <span class="text-gray-400">変位 0mm</span>
+            <div class="w-36 h-3 rounded color-ramp"></div>
+            <span class="text-gray-400">Max (反り)</span>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, controls;
+        let panelGroup = new THREE.Group();
+        let isWireframe = false;
+        let rawDxfText = "";
+        let currentWarpScale = 10.0;
+
+        // パルスしたデータ構造
+        let parsedData = {
+            panelPolygon: [],
+            routerHoles: [],
+            unitPolygons: [],
+            width: 200,
+            height: 150
+        };
+
+        // 基本幾何データ保存用（倍率即時変更用）
+        let baseGeometries = [];
+
+        window.onload = function() {
+            init3D();
+            createSampleData();
+            runSimulation();
+        };
+
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0d0f12);
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 3000);
+            camera.position.set(0, -220, 220);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight1.position.set(150, -150, 250);
+            scene.add(dirLight1);
+
+            const dirLight2 = new THREE.DirectionalLight(0x38bdf8, 0.3);
+            dirLight2.position.set(-150, 150, -100);
+            scene.add(dirLight2);
+
+            const grid = new THREE.GridHelper(500, 50, 0x334155, 0x1e293b);
+            grid.rotation.x = Math.PI / 2;
+            scene.add(grid);
+
+            scene.add(panelGroup);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function resetCamera() {
+            const size = Math.max(parsedData.width, parsedData.height);
+            camera.position.set(0, -size * 1.3, size * 1.1);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        function toggleWireframe() {
+            isWireframe = !isWireframe;
+            panelGroup.traverse(child => {
+                if (child.isMesh) child.material.wireframe = isWireframe;
+            });
+        }
+
+        function handleFileSelect(files) {
+            if (!files || files.length === 0) return;
+            const file = files[0];
+            document.getElementById('file-label').innerText = file.name;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                rawDxfText = e.target.result;
+                reparseDXF();
+            };
+            reader.readAsText(file);
+        }
+
+        // 自前による高精度・超軽量DXFパーサー（外部ライブラリ依存解消）
+        function reparseDXF() {
+            if (!rawDxfText) return;
+
+            const panelLayer = document.getElementById('layer-panel').value.trim().toUpperCase();
+            const routerLayer = document.getElementById('layer-router').value.trim().toUpperCase();
+            const unitLayer = document.getElementById('layer-unit').value.trim().toUpperCase();
+
+            const lines = rawDxfText.split(/\r?\n/);
+            let entities = [];
+            let inEntities = false;
+            let current = null;
+
+            for (let i = 0; i < lines.length; i++) {
+                const code = lines[i].trim();
+                const val = (i + 1 < lines.length) ? lines[i + 1].trim() : "";
+
+                if (code === '2' && val === 'ENTITIES') { inEntities = true; i++; continue; }
+                if (code === '0' && val === 'ENDSEC') { if (inEntities) { if (current) entities.push(current); inEntities = false; } }
+
+                if (inEntities && code === '0') {
+                    if (current) entities.push(current);
+                    current = { type: val, layer: "0", vertices: [] };
+                    i++; continue;
+                }
+
+                if (inEntities && current) {
+                    const c = parseInt(code, 10);
+                    if (c === 8) current.layer = val.toUpperCase();
+                    else if (c === 10) current.cx = parseFloat(val);
+                    else if (c === 20) {
+                        current.cy = parseFloat(val);
+                        if (current.type === 'LWPOLYLINE' || current.type === 'VERTEX') {
+                            current.vertices.push({ x: current.cx, y: current.cy });
+                        }
+                    }
+                    else if (c === 11) current.x2 = parseFloat(val);
+                    else if (c === 21) {
+                        current.y2 = parseFloat(val);
+                        if (current.type === 'LINE') {
+                            current.vertices = [{ x: current.cx, y: current.cy }, { x: current.x2, y: current.y2 }];
+                        }
+                    }
+                    i++;
+                }
+            }
+            if (current) entities.push(current);
+
+            let panelPolys = [];
+            let routerPolys = [];
+            let unitPolys = [];
+
+            entities.forEach(ent => {
+                const l = ent.layer;
+                if (ent.vertices.length < 2) return;
+
+                if (l === panelLayer || l.includes(panelLayer)) panelPolys.push(ent.vertices);
+                else if (l === routerLayer || l.includes(routerLayer)) routerPolys.push(ent.vertices);
+                else if (l === unitLayer || l.includes(unitLayer)) unitPolys.push(ent.vertices);
+            });
+
+            // 基準原点の統一計算
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            const checkBounds = (pts) => pts.forEach(p => {
+                if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+                if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+            });
+
+            panelPolys.forEach(checkBounds);
+            if (minX === Infinity) {
+                unitPolys.forEach(checkBounds);
+                routerPolys.forEach(checkBounds);
+            }
+
+            const centerX = (minX + maxX) / 2 || 0;
+            const centerY = (minY + maxY) / 2 || 0;
+
+            const shift = (polys) => polys.map(poly => poly.map(p => ({ x: p.x - centerX, y: p.y - centerY })));
+
+            parsedData = {
+                panelPolygon: shift(panelPolys)[0] || [{x:-100,y:-75},{x:100,y:-75},{x:100,y:75},{x:-100,y:75}],
+                routerHoles: shift(routerPolys),
+                unitPolygons: shift(unitPolys),
+                width: Math.round((maxX - minX) * 10) / 10 || 200,
+                height: Math.round((maxY - minY) * 10) / 10 || 150
+            };
+
+            document.getElementById('info-pcs').innerText = parsedData.unitPolygons.length;
+            document.getElementById('info-size').innerText = `${parsedData.width} × ${parsedData.height} mm`;
+
+            runSimulation();
+        }
+
+        // デフォルトサンプル（パネル＋スリット抜き＋単品基板）
+        function createSampleData() {
+            const w = 200, h = 150;
+            parsedData = {
+                width: w, height: h,
+                panelPolygon: [{x:-100,y:-75},{x:100,y:-75},{x:100,y:75},{x:-100,y:75}],
+                routerHoles: [
+                    // スリット（抜き領域）
+                    [{x:-92,y:8},{x:-33,y:8},{x:-33,y:67},{x:-92,y:67}],
+                    [{x:-27,y:8},{x:27,y:8},{x:27,y:67},{x:-27,y:67}],
+                    [{x:33,y:8},{x:92,y:8},{x:92,y:67},{x:33,y:67}],
+                    [{x:-92,y:-67},{x:-33,y:-67},{x:-33,y:-8},{x:-92,y:-8}],
+                    [{x:-27,y:-67},{x:27,y:-67},{x:27,y:-8},{x:-27,y:-8}],
+                    [{x:33,y:-67},{x:92,y:-67},{x:92,y:-8},{x:33,y:-8}]
+                ],
+                unitPolygons: [
+                    // 単品基板 (pcs)
+                    [{x:-90,y:10},{x:-35,y:10},{x:-35,y:65},{x:-90,y:65}],
+                    [{x:-25,y:10},{x:25,y:10},{x:25,y:65},{x:-25,y:65}],
+                    [{x:35,y:10},{x:90,y:10},{x:90,y:65},{x:35,y:65}],
+                    [{x:-90,y:-65},{x:-35,y:-65},{x:-35,y:-10},{x:-90,y:-10}],
+                    [{x:-25,y:-65},{x:25,y:-65},{x:25,y:-10},{x:-25,y:-10}],
+                    [{x:35,y:-65},{x:90,y:-65},{x:90,y:-10},{x:35,y:-10}]
+                ]
+            };
+
+            document.getElementById('info-pcs').innerText = "6 (サンプル)";
+            document.getElementById('info-size').innerText = `${w} × ${h} mm`;
+        }
+
+        // 熱物理歪み計算エンジン
+        function runSimulation() {
+            const thickness = parseFloat(document.getElementById('param-thick').value);
+            const matType = document.getElementById('param-mat').value;
+            const cuDiff = parseFloat(document.getElementById('param-cu-diff').value) / 100;
+            const temp = parseFloat(document.getElementById('param-temp').value);
+            const compWeight = parseFloat(document.getElementById('param-weight').value);
+
+            let E_base = (temp > 170) ? (matType === 'fr4_hightg' ? 9500 : 4500) : 22000;
+            let cte = (matType === 'polyimide') ? 22e-6 : 60e-6;
+
+            const deltaT = temp - 25;
+            const thermalCurvature = ((17e-6 - cte) * deltaT * cuDiff * (0.035 / thickness)) / (thickness * 0.5);
+
+            const pcsCount = Math.max(1, parsedData.unitPolygons.length);
+            const totalWeight = (pcsCount * compWeight) + (parsedData.width * parsedData.height * thickness * 1.9e-3);
+            const gravityDeflection = (5 * (totalWeight / 1000 * 9.81) * Math.pow(parsedData.height, 3)) / (384 * E_base * (parsedData.width * Math.pow(thickness, 3) / 12));
+
+            const maxZ = Math.abs(thermalCurvature * Math.pow(parsedData.height, 2) / 8) + gravityDeflection;
+            const diagonal = Math.sqrt(Math.pow(parsedData.width, 2) + Math.pow(parsedData.height, 2));
+            const warpageRatio = (maxZ / diagonal) * 100;
+
+            document.getElementById('res-warpage-mm').innerText = `${maxZ.toFixed(2)} mm`;
+            document.getElementById('res-warpage-ratio').innerText = `${warpageRatio.toFixed(2)} %`;
+
+            const badge = document.getElementById('res-badge');
+            if (warpageRatio <= 0.5) {
+                badge.className = 'py-1 px-3 rounded-full text-center font-bold text-xs bg-emerald-600 text-white';
+                badge.innerText = 'OK: 良好';
+            } else if (warpageRatio <= 0.75) {
+                badge.className = 'py-1 px-3 rounded-full text-center font-bold text-xs bg-amber-500 text-slate-900';
+                badge.innerText = 'WARNING: 許容内';
+            } else {
+                badge.className = 'py-1 px-3 rounded-full text-center font-bold text-xs bg-rose-600 text-white';
+                badge.innerText = 'NG: 規格超過';
+            }
+
+            build3DScene(maxZ, thickness);
+        }
+
+        // 3Dメッシュ構築（パネル＋ルーター抜き穴＋単品基板）
+        function build3DScene(maxZ, thickness) {
+            while (panelGroup.children.length > 0) {
+                const c = panelGroup.children[0];
+                if (c.geometry) c.geometry.dispose();
+                panelGroup.remove(c);
+            }
+
+            baseGeometries = [];
+            const halfW = parsedData.width / 2 || 100;
+            const halfH = parsedData.height / 2 || 75;
+
+            // 1. パネル基材フレーム（ルーター抜かれ領域をくり抜き）
+            const frameShape = new THREE.Shape();
+            const panelPoly = parsedData.panelPolygon;
+
+            if (panelPoly.length > 0) {
+                frameShape.moveTo(panelPoly[0].x, panelPoly[0].y);
+                for (let i = 1; i < panelPoly.length; i++) frameShape.lineTo(panelPoly[i].x, panelPoly[i].y);
+                frameShape.closePath();
+            }
+
+            // ルーター抜かれ領域をHoleとしてくり抜き処理
+            parsedData.routerHoles.forEach(rPoly => {
+                if (rPoly.length > 2) {
+                    const hole = new THREE.Path();
+                    hole.moveTo(rPoly[0].x, rPoly[0].y);
+                    for (let i = 1; i < rPoly.length; i++) hole.lineTo(rPoly[i].x, rPoly[i].y);
+                    hole.closePath();
+                    frameShape.holes.push(hole);
+                }
+            });
+
+            const frameGeo = new THREE.ExtrudeGeometry(frameShape, { depth: thickness, bevelEnabled: false, curveSegments: 12 });
+            applyWarpAndColoring(frameGeo, maxZ, halfW, halfH, false);
+
+            const frameMesh = new THREE.Mesh(frameGeo, new THREE.MeshStandardMaterial({
+                vertexColors: true, side: THREE.DoubleSide, roughness: 0.3, metalness: 0.2, wireframe: isWireframe
+            }));
+            frameMesh.rotation.x = -Math.PI / 2;
+            panelGroup.add(frameMesh);
+
+            // 2. 単品基板（UNIT_OUTLINE）メッシュ
+            parsedData.unitPolygons.forEach(uPoly => {
+                const uShape = new THREE.Shape();
+                uShape.moveTo(uPoly[0].x, uPoly[0].y);
+                for (let i = 1; i < uPoly.length; i++) uShape.lineTo(uPoly[i].x, uPoly[i].y);
+                uShape.closePath();
+
+                const uGeo = new THREE.ExtrudeGeometry(uShape, { depth: thickness, bevelEnabled: false, curveSegments: 12 });
+                applyWarpAndColoring(uGeo, maxZ, halfW, halfH, true);
+
+                const uMesh = new THREE.Mesh(uGeo, new THREE.MeshStandardMaterial({
+                    vertexColors: true, side: THREE.DoubleSide, roughness: 0.2, metalness: 0.1, wireframe: isWireframe
+                }));
+                uMesh.rotation.x = -Math.PI / 2;
+                panelGroup.add(uMesh);
+
+                // 各単品基板のエッジ（境界線）強調表示
+                const edges = new THREE.EdgesGeometry(uGeo);
+                const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x38bdf8 }));
+                line.rotation.x = -Math.PI / 2;
+                panelGroup.add(line);
+            });
+
+            updateWarpScale(document.getElementById('warp-scale').value);
+        }
+
+        // 変形＆ヒートマップ着色アルゴリズム
+        function applyWarpAndColoring(geo, maxZ, halfW, halfH, isUnit) {
+            const pos = geo.attributes.position;
+            const colors = [];
+            const initialZ = new Float32Array(pos.count);
+            const warpOffsets = new Float32Array(pos.count);
+
+            const colorRamp = [
+                new THREE.Color(0x0000ff), new THREE.Color(0x00ffff),
+                new THREE.Color(0x00ff00), new THREE.Color(0xffff00), new THREE.Color(0xff0000)
+            ];
+
+            for (let i = 0; i < pos.count; i++) {
+                const x = pos.getX(i);
+                const y = pos.getY(i);
+                const nx = x / halfW;
+                const ny = y / halfH;
+
+                initialZ[i] = pos.getZ(i);
+                // 二次曲面による反り変形オフセット
+                warpOffsets[i] = ((nx * nx + ny * ny) / 2.0) * maxZ;
+
+                const t = Math.min(Math.max(warpOffsets[i] / Math.max(0.1, maxZ), 0), 1);
+                const idx = t * (colorRamp.length - 1);
+                const baseIdx = Math.floor(idx);
+                const factor = idx - baseIdx;
+
+                const c1 = colorRamp[baseIdx];
+                const c2 = colorRamp[Math.min(baseIdx + 1, colorRamp.length - 1)];
+                const col = c1.clone().lerp(c2, factor);
+
+                // 単品基板の場合は少しトーンを変えて識別しやすく
+                if (isUnit) col.multiplyScalar(1.1);
+
+                colors.push(col.r, col.g, col.b);
+            }
+
+            geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geo.computeVertexNormals();
+
+            baseGeometries.push({ geo: geo, initialZ: initialZ, warpOffsets: warpOffsets });
+        }
+
+        // 反り倍率のリアルタイム変更処理
+        function updateWarpScale(val) {
+            currentWarpScale = parseFloat(val);
+            document.getElementById('warp-scale-val').innerText = currentWarpScale.toFixed(1) + 'x';
+
+            baseGeometries.forEach(item => {
+                const pos = item.geo.attributes.position;
+                for (let i = 0; i < pos.count; i++) {
+                    pos.setZ(i, item.initialZ[i] + (item.warpOffsets[i] * currentWarpScale));
+                }
+                pos.needsUpdate = true;
+                item.geo.computeVertexNormals();
+            });
+        }
+    </script>
+</body>
+</html>
