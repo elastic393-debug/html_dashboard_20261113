@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8"><title>パネル基板 反り簡易シミュレータ</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#f6f7f9;--fg:#1c2330;--card:#fff;--mut:#667085;--bd:#d9dee7;--ac:#0b7a4b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12161d;--fg:#e8ecf3;--card:#1b212b;--mut:#98a2b3;--bd:#2f3745;--ac:#3ecf8e}}
+:root[data-theme="dark"]{--bg:#12161d;--fg:#e8ecf3;--card:#1b212b;--mut:#98a2b3;--bd:#2f3745;--ac:#3ecf8e}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,"Hiragino Sans","Noto Sans JP",sans-serif;padding:12px}
+h1{font-size:17px;margin:0 0 8px}h2{font-size:14px;margin:0 0 8px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:10px}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+label{display:block;font-size:12px;color:var(--mut)}
+input,select,button{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:6px}
+button{background:var(--ac);color:#fff;border:0;font-weight:600;padding:10px}button.s{background:var(--bg);color:var(--fg);border:1px solid var(--bd)}
+canvas{width:100%;display:block;border-radius:6px;background:var(--bg)}
+.m{color:var(--mut);font-size:12px}table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:4px 6px;border-bottom:1px solid var(--bd);text-align:right}th:first-child,td:first-child{text-align:left}
+.bar{height:12px;border-radius:3px;margin-top:6px}.tk{display:flex;justify-content:space-between;font-size:11px;color:var(--mut)}
+.ok{color:var(--ac)}.ng{color:#d92d20}
+</style></head><body>
+<h1>パネル基板 反り簡易シミュレータ</h1>
+<div class="c"><h2>① DXF読込</h2>
+<div class="g"><input type="file" id="f" accept=".dxf,.DXF"><button class="s" id="smp">サンプルを使う</button></div>
+<div class="g" style="margin-top:8px"><div><label>外形層(スリット含む)</label><select id="lo"></select></div><div><label>基板層(閉ポリライン)</label><select id="lb"></select></div></div>
+<canvas id="cd" width="700" height="360" style="margin-top:8px"></canvas><div class="m" id="info"></div></div>
+<div class="c"><h2>② 条件</h2><div class="g">
+<div><label>表裏の実効CTE差 Δα (ppm/K)</label><input id="da" type="number" value="1" step="0.1"></div>
+<div><label>温度変化 ΔT (K)</label><input id="dT" type="number" value="200"></div>
+<div><label>板厚 (mm)</label><input id="th" type="number" value="1.0" step="0.1"></div>
+<div><label>ポアソン比</label><input id="nu" type="number" value="0.18" step="0.01"></div>
+<div><label>捨て板の反り駆動係数</label><input id="kw" type="number" value="0.6" step="0.1"></div>
+<div><label>捨て板の剛性比</label><input id="rs" type="number" value="1" step="0.1"></div>
+<div><label>スリット残存剛性 (%)</label><input id="ep" type="number" value="2" step="0.5"></div>
+<div><label>層数</label><select id="ln"><option>2</option><option selected>4</option><option>6</option><option>8</option></select></div>
+<div><label>銅箔厚 外層 / 内層 (µm・銅合計70µm比で駆動曲率に比例)</label><div class="g"><input id="co" type="number" value="35" step="1"><input id="ci" type="number" value="18" step="1"></div></div>
+<div><label>樹脂部の弾性率 E (GPa・銅は110GPaで混合)</label><input id="ey" type="number" value="22" step="1"></div>
+<div><label>搬送支持(重力・部品重量の考慮)</label><select id="sp"><option value="n">なし(自由・重力無視)</option><option value="y" selected>上下辺をレール支持(幅5mm)</option><option value="x">左右辺をレール支持(幅5mm)</option></select></div>
+<div><label>メッシュ (mm)</label><select id="gs"><option>2</option><option selected>1</option><option>0.5</option></select></div>
+</div>
+<label style="margin-top:8px">基板ごとの反り駆動係数(銅残率の差)と部品重量(g/枚)</label><div class="g" id="fb"></div>
+<button id="run" style="margin-top:10px">解析実行</button><div class="m" id="pg"></div></div>
+<div class="c" id="rc" hidden><h2>③ 結果</h2>
+<div class="m" id="sum"></div>
+<canvas id="ct" width="700" height="500" style="margin:8px 0 0"></canvas>
+<div class="bar" id="cb"></div><div class="tk" id="tk"></div>
+<h2 style="margin-top:12px">3D表示</h2>
+<div class="g"><div><label>変位倍率</label><input type="range" id="ex" min="1" max="300" value="30"></div><div><label>回転</label><input type="range" id="rt" min="0" max="360" value="30"></div></div>
+<canvas id="c3" width="700" height="460" style="margin-top:6px"></canvas>
+<table id="tb" style="margin-top:10px"></table>
+<div class="m">モデル:薄板の曲げ(固有曲率 κ0=1.5・Δα・ΔT/板厚)をメッシュ上で最小エネルギー解として解く簡易手法。スリットは残存剛性のみ、基準面は全体の最小二乗平面。判定は反り量/対角長≦0.75%。実測・FEMとの校正係数を入れて使ってください。</div></div>
+<script>
+const $=i=>document.getElementById(i);let doc=null,R=null,job=null;
+const SAMPLE={"OUTLINE":{"L":[[61.5,61.5,61.5,8.5],[8.5,8.5,8.5,61.5],[61.5,8.5,36.5,8.5],[33.5,8.5,8.5,8.5],[33.5,10.0,10.0,10.0],[36.5,10.0,60.0,10.0],[60.0,60.0,36.5,60.0],[33.5,60.0,10.0,60.0],[33.5,61.5,8.5,61.5],[36.5,61.5,61.5,61.5],[10.0,10.0,10.0,60.0],[60.0,60.0,60.0,10.0],[121.5,61.5,121.5,8.5],[68.5,8.5,68.5,61.5],[121.5,8.5,96.5,8.5],[93.5,8.5,68.5,8.5],[93.5,10.0,70.0,10.0],[96.5,10.0,120.0,10.0],[120.0,60.0,96.5,60.0],[93.5,60.0,70.0,60.0],[93.5,61.5,68.5,61.5],[96.5,61.5,121.5,61.5],[70.0,10.0,70.0,60.0],[120.0,60.0,120.0,10.0],[61.5,121.5,61.5,68.5],[8.5,68.5,8.5,121.5],[61.5,68.5,36.5,68.5],[33.5,68.5,8.5,68.5],[33.5,70.0,10.0,70.0],[36.5,70.0,60.0,70.0],[60.0,120.0,36.5,120.0],[33.5,120.0,10.0,120.0],[33.5,121.5,8.5,121.5],[36.5,121.5,61.5,121.5],[10.0,70.0,10.0,120.0],[60.0,120.0,60.0,70.0],[121.5,121.5,121.5,68.5],[68.5,68.5,68.5,121.5],[121.5,68.5,96.5,68.5],[93.5,68.5,68.5,68.5],[93.5,70.0,70.0,70.0],[96.5,70.0,120.0,70.0],[120.0,120.0,96.5,120.0],[93.5,120.0,70.0,120.0],[93.5,121.5,68.5,121.5],[96.5,121.5,121.5,121.5],[70.0,70.0,70.0,120.0],[120.0,120.0,120.0,70.0],[181.5,121.5,181.5,68.5],[128.5,68.5,128.5,121.5],[181.5,68.5,156.5,68.5],[153.5,68.5,128.5,68.5],[153.5,70.0,130.0,70.0],[156.5,70.0,180.0,70.0],[180.0,120.0,156.5,120.0],[153.5,120.0,130.0,120.0],[153.5,121.5,128.5,121.5],[156.5,121.5,181.5,121.5],[130.0,70.0,130.0,120.0],[180.0,120.0,180.0,70.0],[181.5,61.5,181.5,8.5],[128.5,8.5,128.5,61.5],[181.5,8.5,156.5,8.5],[153.5,8.5,128.5,8.5],[153.5,10.0,130.0,10.0],[156.5,10.0,180.0,10.0],[180.0,60.0,156.5,60.0],[153.5,60.0,130.0,60.0],[153.5,61.5,128.5,61.5],[156.5,61.5,181.5,61.5],[130.0,10.0,130.0,60.0],[180.0,60.0,180.0,10.0],[185.0,130.0,5.0,130.0],[190.0,5.0,190.0,125.0],[-0.0,5.0,-0.0,125.0],[5.0,0.0,185.0,-0.0]],"A":[[33.5,9.25,0.75,-90.0,90.0],[36.5,9.25,0.75,81.512,-90.0],[33.5,60.75,0.75,-90.0,90.0],[36.5,60.75,0.75,81.512,-90.0],[93.5,9.25,0.75,-90.0,90.0],[96.5,9.25,0.75,81.512,-90.0],[93.5,60.75,0.75,-90.0,90.0],[96.5,60.75,0.75,81.512,-90.0],[33.5,69.25,0.75,-90.0,90.0],[36.5,69.25,0.75,81.512,-90.0],[33.5,120.75,0.75,-90.0,90.0],[36.5,120.75,0.75,81.512,-90.0],[93.5,69.25,0.75,-90.0,90.0],[96.5,69.25,0.75,81.512,-90.0],[93.5,120.75,0.75,-90.0,90.0],[96.5,120.75,0.75,81.512,-90.0],[153.5,69.25,0.75,-90.0,90.0],[156.5,69.25,0.75,81.512,-90.0],[153.5,120.75,0.75,-90.0,90.0],[156.5,120.75,0.75,81.512,-90.0],[153.5,9.25,0.75,-90.0,90.0],[156.5,9.25,0.75,81.512,-90.0],[153.5,60.75,0.75,-90.0,90.0],[156.5,60.75,0.75,81.512,-90.0],[5.0,125.0,5.0,90.0,180.0],[185.0,125.0,5.0,0.0,90.0],[185.0,5.0,5.0,-90.0,0.0],[5.0,5.0,5.0,180.0,-90.0]],"P":[]},"BOARD":{"L":[],"A":[],"P":[{"pts":[[10.0,10.0],[60.0,10.0],[60.0,60.0],[10.0,60.0]],"closed":true},{"pts":[[10.0,120.0],[60.0,120.0],[60.0,70.0],[10.0,70.0]],"closed":true},{"pts":[[70.0,70.0],[120.0,70.0],[120.0,120.0],[70.0,120.0]],"closed":true},{"pts":[[70.0,10.0],[120.0,10.0],[120.0,60.0],[70.0,60.0]],"closed":true},{"pts":[[130.0,60.0],[180.0,60.0],[180.0,10.0],[130.0,10.0]],"closed":true},{"pts":[[180.0,120.0],[130.0,120.0],[130.0,70.0],[180.0,70.0]],"closed":true}]}};
+function polyPts(o){const p=o.pts,n=p.length,r=[],E=o.closed?n:n-1;for(let i=0;i<E;i++){const a=p[i],b=p[(i+1)%n],bg=a[2]||0;r.push([a[0],a[1]]);
+if(bg){const dx=b[0]-a[0],dy=b[1]-a[1],Ln=Math.hypot(dx,dy)||1,th=4*Math.atan(bg),R=Ln/2/Math.sin(th/2),cx=(a[0]+b[0])/2-dy/Ln*R*Math.cos(th/2),cy=(a[1]+b[1])/2+dx/Ln*R*Math.cos(th/2),a0=Math.atan2(a[1]-cy,a[0]-cx),m=Math.max(2,Math.ceil(Math.abs(th)/.05));for(let s=1;s<m;s++){const q=a0+th*s/m;r.push([cx+Math.abs(R)*Math.cos(q),cy+Math.abs(R)*Math.sin(q)])}}}
+if(!o.closed)r.push([p[n-1][0],p[n-1][1]]);return r}
+function splinePts(c){const P=c.cp,d=c.deg,K=c.kn,n=P.length;if(n<d+1||K.length!=n+d+1)return(c.fp.length?c.fp:P).map(p=>[p[0],p[1]]);
+const a=K[d],b=K[n],m=Math.max(60,n*16),W=c.w.length==n?c.w:P.map(()=>1),o=[];
+for(let s=0;s<=m;s++){const u=a+(b-a)*s/m;let k=d;while(k<n-1&&u>=K[k+1])k++;const q=[];for(let j=0;j<=d;j++){const i=k-d+j;q.push([P[i][0]*W[i],P[i][1]*W[i],W[i]])}
+for(let r=1;r<=d;r++)for(let j=d;j>=r;j--){const i=k-d+j,al=(u-K[i])/(K[i+d-r+1]-K[i]||1);q[j]=q[j].map((v,t)=>(1-al)*q[j-1][t]+al*v)}o.push([q[d][0]/q[d][2],q[d][1]/q[d][2]])}return o}
+function ellPts(g){const a=g[41]||0;let b=g[42]??2*Math.PI;if(b<=a)b+=2*Math.PI;const rx=g[11],ry=g[21],m=Math.max(48,Math.ceil((b-a)/.05)),o=[];for(let s=0;s<=m;s++){const t=a+(b-a)*s/m,cx=Math.cos(t),sy=Math.sin(t)*g[40];o.push([g[10]+cx*rx-sy*ry,g[20]+cx*ry+sy*rx])}return{pts:o,closed:Math.abs(b-a-2*Math.PI)<1e-6}}
+function loops(S){const U=S.slice(),R=[],e=1e-3,eq=(a,b)=>Math.abs(a[0]-b[0])<e&&Math.abs(a[1]-b[1])<e;
+while(U.length){const s=U.pop(),p=[[s[0],s[1]],[s[2],s[3]]];let f=true;while(f){f=false;for(let i=0;i<U.length;i++){const t=U[i],a=[t[0],t[1]],b=[t[2],t[3]],z=p[p.length-1];if(eq(z,a)){p.push(b);U.splice(i,1);f=true;break}if(eq(z,b)){p.push(a);U.splice(i,1);f=true;break}}}
+if(p.length>3&&eq(p[0],p[p.length-1]))R.push(p.slice(0,-1))}return R}
+function parseDXF(t){const L=t.split(/\r?\n/),lay={};let inE=false,c=null,pl=null;
+const get=n=>lay[n]||(lay[n]={L:[],A:[],P:[]});
+const fl=()=>{if(!c)return;const g=c.g,y=get(c.ly);
+if(c.t=='POLYLINE'){pl=c;c=null;return}if(c.t=='VERTEX'){if(pl)pl.p.push([g[10],g[20],g[42]||0]);c=null;return}if(c.t=='SEQEND'){if(pl)get(pl.ly).P.push({pts:pl.p,closed:(pl.f&1)==1});pl=null;c=null;return}
+if(c.t=='LINE')y.L.push([g[10],g[20],g[11],g[21]]);
+else if(c.t=='ARC')y.A.push([g[10],g[20],g[40],g[50],g[51]]);
+else if(c.t=='CIRCLE')y.A.push([g[10],g[20],g[40],0,360]);
+else if(c.t=='LWPOLYLINE')y.P.push({pts:c.p,closed:(c.f&1)==1});
+else if(c.t=='SPLINE')y.P.push({pts:splinePts(c),closed:(c.f&1)==1});
+else if(c.t=='ELLIPSE')y.P.push(ellPts(g));c=null};
+for(let i=0;i+1<L.length;i+=2){const k=parseInt(L[i]),v=L[i+1].trim();if(isNaN(k))continue;
+if(k==0){fl();if(v=='ENDSEC')inE=false;else if(inE)c={t:v,g:{},p:[],cp:[],kn:[],w:[],fp:[],deg:3,ly:'0',f:0};}
+else if(k==2&&v=='ENTITIES')inE=true;
+else if(c){if(k==8)c.ly=v;else if(k==70)c.f=parseInt(v);
+else if(c.t=='LWPOLYLINE'&&k==10)c.p.push([parseFloat(v)]);
+else if(c.t=='LWPOLYLINE'&&k==20)c.p[c.p.length-1].push(parseFloat(v));
+else if(c.t=='LWPOLYLINE'&&k==42)c.p[c.p.length-1][2]=parseFloat(v);
+else if(c.t=='SPLINE'){if(k==10)c.cp.push([parseFloat(v)]);else if(k==20)c.cp[c.cp.length-1][1]=parseFloat(v);else if(k==40)c.kn.push(parseFloat(v));else if(k==41)c.w.push(parseFloat(v));else if(k==71)c.deg=parseInt(v);else if(k==11)c.fp.push([parseFloat(v)]);else if(k==21)c.fp[c.fp.length-1][1]=parseFloat(v)}
+else if(k>=10&&k<=51)c.g[k]=parseFloat(v);}}
+fl();return lay}
+function segs(n){const y=doc[n],S=[];if(!y)return S;y.L.forEach(l=>S.push(l));
+y.A.forEach(([cx,cy,r,a0,a1])=>{if(a1<=a0)a1+=360;const m=Math.max(8,Math.ceil((a1-a0)/2));let p=null;
+for(let k=0;k<=m;k++){const a=(a0+(a1-a0)*k/m)*Math.PI/180,q=[cx+r*Math.cos(a),cy+r*Math.sin(a)];if(p)S.push([p[0],p[1],q[0],q[1]]);p=q}});
+y.P.forEach(o=>{const p=polyPts(o),n=p.length;for(let k=0;k<(o.closed?n:n-1);k++){const a=p[k],b=p[(k+1)%n];S.push([a[0],a[1],b[0],b[1]])}});return S}
+function load(d){doc=d;const names=Object.keys(d).filter(n=>d[n].L.length+d[n].A.length+d[n].P.length>0);
+['lo','lb'].forEach(i=>$(i).innerHTML=names.map(n=>`<option>${n}</option>`).join(''));
+$('lo').value=names.find(n=>/outline|外形/i.test(n))||names[0];$('lb').value=names.find(n=>/board|基板/i.test(n))||names[names.length-1];
+build();$('lo').onchange=$('lb').onchange=build}
+function pip(x,y,p){let c=false;for(let i=0,j=p.length-1;i<p.length;j=i++)if((p[i][1]>y)!=(p[j][1]>y)&&x<(p[j][0]-p[i][0])*(y-p[i][1])/(p[j][1]-p[i][1])+p[i][0])c=!c;return c}
+let G=null;function ST(){const n=+$('ln').value,o=+$('co').value,i=+$('ci').value;return{n,o,i,t:2*o+(n-2)*i}}
+function build(){const S=segs($('lo').value),h=+$('gs').value;if(!S.length)return;
+let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;S.forEach(s=>{x0=Math.min(x0,s[0],s[2]);x1=Math.max(x1,s[0],s[2]);y0=Math.min(y0,s[1],s[3]);y1=Math.max(y1,s[1],s[3])});
+const nx=Math.ceil((x1-x0)/h),ny=Math.ceil((y1-y0)/h),mat=new Uint8Array(nx*ny),bid=new Int16Array(nx*ny).fill(-1);
+for(let j=0;j<ny;j++){const y=y0+(j+.5)*h,xs=[];S.forEach(s=>{if((s[1]>y)!=(s[3]>y))xs.push(s[0]+(y-s[1])/(s[3]-s[1])*(s[2]-s[0]))});xs.sort((a,b)=>a-b);
+for(let k=0;k+1<xs.length;k+=2)for(let i=Math.max(0,Math.ceil((xs[k]-x0)/h-.5));i<=Math.min(nx-1,Math.floor((xs[k+1]-x0)/h-.5));i++)mat[j*nx+i]=1}
+let B=(doc[$('lb').value]?doc[$('lb').value].P:[]).filter(o=>o.closed&&o.pts.length>=3).map(polyPts);if(!B.length)B=loops(segs($('lb').value));
+B.forEach((p,k)=>{for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){if(mat[j*nx+i]&&pip(x0+(i+.5)*h,y0+(j+.5)*h,p))bid[j*nx+i]=k}});
+G={S,h,x0,y0,x1,y1,nx,ny,mat,bid,B};
+$('fb').innerHTML=B.map((p,k)=>`<div><label>基板${k+1} 係数 / 部品g</label><div class="g"><input type="number" class="fbi" value="1" step="0.1"><input type="number" class="wti" value="20" step="1"></div></div>`).join('');
+$('info').textContent=`外形 ${(x1-x0).toFixed(1)}×${(y1-y0).toFixed(1)} mm / 基板 ${B.length}枚 / メッシュ ${nx}×${ny}`;
+const cv=$('cd'),x=cv.getContext('2d'),s=Math.min(cv.width/(x1-x0),cv.height/(y1-y0))*.95,ox=(cv.width-(x1-x0)*s)/2,oy=(cv.height+(y1-y0)*s)/2;
+x.clearRect(0,0,cv.width,cv.height);const P=(a,b)=>[ox+(a-x0)*s,oy-(b-y0)*s];
+x.strokeStyle=getComputedStyle(document.body).color;x.lineWidth=1;x.beginPath();S.forEach(q=>{const a=P(q[0],q[1]),b=P(q[2],q[3]);x.moveTo(a[0],a[1]);x.lineTo(b[0],b[1])});x.stroke();
+x.fillStyle='rgba(11,150,90,.25)';x.strokeStyle='#0b965a';B.forEach((p,k)=>{x.beginPath();p.forEach((q,i)=>{const a=P(q[0],q[1]);i?x.lineTo(a[0],a[1]):x.moveTo(a[0],a[1])});x.closePath();x.fill();x.stroke()})}
+function solve(){const {h,nx,ny,mat,bid}=G,N=nx*ny,nu=+$('nu').value,ep=+$('ep').value/100,rs=+$('rs').value,kw=+$('kw').value;
+const fb=[...document.querySelectorAll('.fbi')].map(e=>+e.value),wt=[...document.querySelectorAll('.wti')].map(e=>+e.value),thk=+$('th').value,tcu=ST().t,Em=((+$('ey').value)*(thk-tcu/1000)+110*tcu/1000)/thk,D0=Em*1e3*thk**3/(12*(1-nu*nu)),k0=1.5*(+$('da').value)*1e-6*(+$('dT').value)/thk*(tcu/70),sp=$('sp').value;
+const d=new Float64Array(N),kk=new Float64Array(N),sw=new Float64Array(N),dg=new Float64Array(N),ih2=1/(h*h),ih4=ih2*ih2;
+for(let n=0;n<N;n++){d[n]=(mat[n]?1:ep)*(bid[n]>=0?1:rs);kk[n]=k0*(bid[n]>=0?(fb[bid[n]]??1):kw)}
+const F=new Float64Array(N),sup=new Float64Array(N),cnt=new Array(G.B.length).fill(0);for(let n=0;n<N;n++)if(bid[n]>=0)cnt[bid[n]]++;
+if(sp!='n'){const fz=1.9e-3*thk*h*h*9.81e-3;for(let n=0;n<N;n++)if(mat[n])F[n]=-(fz+(bid[n]>=0?(wt[bid[n]]||0)*9.81e-3/cnt[bid[n]]:0))}
+for(let j=1;j<ny-1;j++)for(let i=1;i<nx-1;i++){const n=j*nx+i;let m=1e9;for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)m=Math.min(m,d[n+a*nx+b]);sw[n]=m*D0;
+const s=m*D0*ih4;dg[n]+=8*s;dg[n-1]+=s;dg[n+1]+=s;dg[n-nx]+=s;dg[n+nx]+=s;const e=s*2*(1-nu)/16;dg[n+nx+1]+=e;dg[n+nx-1]+=e;dg[n-nx+1]+=e;dg[n-nx-1]+=e}
+let mean=0;for(let n=0;n<N;n++)mean+=dg[n];const lam=1e-7*mean/N;let dm=0;for(let n=0;n<N;n++)dm=Math.max(dm,dg[n]);const rw=Math.ceil(5/h);if(sp!='n')for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const n=j*nx+i;if(mat[n]&&(sp=='y'?(j<rw||j>=ny-rw):(i<rw||i>=nx-rw)))sup[n]=100*dm}for(let n=0;n<N;n++)dg[n]+=lam+sup[n];
+function op(w,g,uk){g.fill(0);for(let j=1;j<ny-1;j++)for(let i=1;i<nx-1;i++){const n=j*nx+i,s=sw[n];if(!s)continue;
+const cxx=(w[n-1]-2*w[n]+w[n+1])*ih2,cyy=(w[n-nx]-2*w[n]+w[n+nx])*ih2,cxy=(w[n+nx+1]-w[n+nx-1]-w[n-nx+1]+w[n-nx-1])*ih2/4,k=uk?kk[n]:0,ex=cxx-k,ey=cyy-k;
+const a=s*(ex+nu*ey)*ih2,b=s*(ey+nu*ex)*ih2,c=s*2*(1-nu)*cxy*ih2/4;
+g[n-1]+=a;g[n]-=2*a;g[n+1]+=a;g[n-nx]+=b;g[n]-=2*b;g[n+nx]+=b;g[n+nx+1]+=c;g[n+nx-1]-=c;g[n-nx+1]-=c;g[n-nx-1]+=c}
+if(!uk)for(let n=0;n<N;n++)g[n]+=(lam+sup[n])*w[n]}
+const w=new Float64Array(N),r=new Float64Array(N),z=new Float64Array(N),p=new Float64Array(N),q=new Float64Array(N);
+op(w,r,true);let rn=0;for(let n=0;n<N;n++){r[n]=-r[n]+F[n];z[n]=r[n]/dg[n];p[n]=z[n];rn+=r[n]*r[n]}rn=Math.sqrt(rn)||1;
+let rz=0;for(let n=0;n<N;n++)rz+=r[n]*z[n];
+return{w,r,z,p,q,rz,rn,it:0,max:h>=2?8000:h>=1?15000:30000,op,dg,N}}
+function tick(){const J=job,t=performance.now();
+while(performance.now()-t<14&&J.it<J.max){J.op(J.p,J.q,false);let pq=0;for(let n=0;n<J.N;n++)pq+=J.p[n]*J.q[n];const al=J.rz/pq;let rs=0,rz2=0;
+for(let n=0;n<J.N;n++){J.w[n]+=al*J.p[n];J.r[n]-=al*J.q[n];J.z[n]=J.r[n]/J.dg[n];rz2+=J.r[n]*J.z[n];rs+=J.r[n]*J.r[n]}
+const be=rz2/J.rz;J.rz=rz2;for(let n=0;n<J.N;n++)J.p[n]=J.z[n]+be*J.p[n];J.it++;J.res=Math.sqrt(rs)/J.rn;if(J.res<1e-5){J.it=J.max;break}}
+$('pg').textContent=`反復 ${J.it} / 残差 ${(J.res||1).toExponential(1)}`;
+if(J.it<J.max)requestAnimationFrame(tick);else finish()}
+function fit(ns){const {nx,h,x0,y0}=G;let a=[0,0,0,0,0,0],b=[0,0,0];ns.forEach(n=>{const x=x0+((n%nx)+.5)*h,y=y0+(((n/nx)|0)+.5)*h,w=job.w[n];a[0]+=1;a[1]+=x;a[2]+=y;a[3]+=x*x;a[4]+=x*y;a[5]+=y*y;b[0]+=w;b[1]+=w*x;b[2]+=w*y});
+const M=[[a[0],a[1],a[2]],[a[1],a[3],a[4]],[a[2],a[4],a[5]]],D=m=>m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])-m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])+m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]),dd=D(M),c=[];
+for(let k=0;k<3;k++){const T=M.map((r,i)=>r.map((v,j)=>j==k?b[i]:v));c.push(D(T)/dd)}return c}
+function finish(){const {nx,ny,mat,bid,h,x0,y0,B}=G,N=nx*ny,all=[];for(let n=0;n<N;n++)if(mat[n]&&bid[n]>=-1&&((n/nx)|0)>0)all.push(n);
+const c=fit(all),W=new Float64Array(N);for(let n=0;n<N;n++){const x=x0+((n%nx)+.5)*h,y=y0+(((n/nx)|0)+.5)*h;W[n]=(job.w[n]-(c[0]+c[1]*x+c[2]*y))*1000}
+let mn=1e9,mx=-1e9;all.forEach(n=>{mn=Math.min(mn,W[n]);mx=Math.max(mx,W[n])});
+const st=B.map((p,k)=>{const ns=all.filter(n=>bid[n]==k),old=job.w;const cc=fit(ns);let a=1e9,b=-1e9;ns.forEach(n=>{const x=x0+((n%nx)+.5)*h,y=y0+(((n/nx)|0)+.5)*h,v=(old[n]-(cc[0]+cc[1]*x+cc[2]*y))*1000;a=Math.min(a,v);b=Math.max(b,v)});
+const xs=p.map(q=>q[0]),ys=p.map(q=>q[1]),dg=Math.hypot(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys));return{k,wp:b-a,pc:(b-a)/1000/dg*100}});
+let na=all[0],nb=all[0];all.forEach(n=>{if(W[n]>W[na])na=n;if(W[n]<W[nb])nb=n});R={W,mn,mx,all,st,na,nb};$('rc').hidden=false;$('pg').textContent+=' 完了';
+const ptp=mx-mn;$('ex').value=Math.max(1,Math.min(300,Math.round(0.12*Math.max(G.x1-G.x0,G.y1-G.y0)*1000/ptp)));
+const loc=n=>`(${(x0+((n%nx)+.5)*h).toFixed(1)}, ${(y0+(((n/nx)|0)+.5)*h).toFixed(1)}) mm・${bid[n]>=0?'基板'+(bid[n]+1):'捨て板部'}`,dgn=Math.hypot(G.x1-G.x0,G.y1-G.y0),pp=ptp/1000/dgn*100,wts=[...document.querySelectorAll('.wti')].map(e=>+e.value||0);
+$('sum').innerHTML=`<div style="font-size:20px;font-weight:700">パネル最大反り量 ${(ptp/1000).toFixed(2)} mm <span class="${pp<=0.75?'ok':'ng'}">(${pp.toFixed(2)}% ${pp<=0.75?'OK':'NG'})</span></div>基準面からの変位 最小 ${mn.toFixed(0)} / 最大 ${mx.toFixed(0)} µm<br>基板総数 ${G.B.length}枚 / ${ST().n}層(外${ST().o}/内${ST().i})・銅合計${ST().t} µm / 部品総重量 ${wts.reduce((a,b)=>a+b,0)} g<br>最高点【高】 ${loc(na)}<br>最低点【低】 ${loc(nb)}`;
+$('tb').innerHTML='<tr><th>基板</th><th>部品 g</th><th>反り µm</th><th>反り率 %</th><th>判定</th></tr>'+st.map(s=>`<tr><td>基板${s.k+1}</td><td>${wts[s.k]}</td><td>${s.wp.toFixed(0)}</td><td>${s.pc.toFixed(3)}</td><td class="${s.pc<=0.75?'ok':'ng'}">${s.pc<=0.75?'OK':'NG'}</td></tr>`).join('');
+draw();$('rc').scrollIntoView({behavior:'smooth'})}
+const NB=9;function col(t){const i=Math.min(NB-1,Math.max(0,Math.floor(t*NB)));return `hsl(${240-240*i/(NB-1)},100%,${i==3?42:50}%)`}
+function draw(){if(!R)return;const {W,mn,mx,all}=R,{nx,ny,mat,h,x0,y0,x1,y1}=G,T=v=>(v-mn)/(mx-mn||1);
+const cb=$('cb');cb.style.background=`linear-gradient(90deg,${Array.from({length:NB},(_,i)=>col((i+.5)/NB)+` ${i/NB*100}%,${col((i+.5)/NB)} ${(i+1)/NB*100}%`).join(',')})`;
+$('tk').innerHTML=Array.from({length:NB+1},(_,i)=>`<span>${(mn+(mx-mn)*i/NB).toFixed(0)}</span>`).join('');
+let cv=$('ct'),x=cv.getContext('2d');x.clearRect(0,0,cv.width,cv.height);const s=Math.min(cv.width/(x1-x0),cv.height/(y1-y0))*.97,ox=(cv.width-(x1-x0)*s)/2,oy=(cv.height+(y1-y0)*s)/2;
+for(let n=0;n<nx*ny;n++){if(!mat[n])continue;const i=n%nx,j=(n/nx)|0;x.fillStyle=col(T(W[n]));x.fillRect(ox+i*h*s,oy-(j+1)*h*s,h*s+.6,h*s+.6)}
+const mk=(px,py,c,t)=>{x.beginPath();x.arc(px,py,10,0,7);x.fillStyle='#fff';x.fill();x.lineWidth=3;x.strokeStyle=c;x.stroke();x.fillStyle=c;x.font='bold 15px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(t,px,py+1)};
+const mp=n=>[ox+((n%nx)+.5)*h*s,oy-(((n/nx)|0)+.5)*h*s];mk(...mp(R.na),'#d92d20','高');mk(...mp(R.nb),'#1570ef','低');
+cv=$('c3');x=cv.getContext('2d');x.clearRect(0,0,cv.width,cv.height);
+const th=+$('rt').value*Math.PI/180,ex=+$('ex').value,El=0.55,cE=Math.cos(El),sE=Math.sin(El),xc=(x0+x1)/2,yc=(y0+y1)/2,ds=Math.hypot(x1-x0,y1-y0),sc=cv.width*.9/ds;
+const pr=(px,py,z)=>{const X=px-xc,Y=py-yc,a=X*Math.cos(th)-Y*Math.sin(th),b=X*Math.sin(th)+Y*Math.cos(th);return[cv.width/2+a*sc,cv.height*.55-(b*sE*sc+z*ex/1000*cE*sc)]};
+const Q=[];for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){const n=j*nx+i;if(mat[n]&&mat[n+1]&&mat[n+nx]&&mat[n+nx+1]){const px=x0+(i+1)*h,py=y0+(j+1)*h;Q.push([n,(px-xc)*Math.sin(th)+(py-yc)*Math.cos(th)])}}
+Q.sort((a,b)=>b[1]-a[1]);Q.forEach(([n])=>{const i=n%nx,j=(n/nx)|0,P=[[0,0,n],[1,0,n+1],[1,1,n+nx+1],[0,1,n+nx]].map(([a,b,m])=>pr(x0+(i+.5+a)*h,y0+(j+.5+b)*h,W[m]));
+const c=col(T((W[n]+W[n+1]+W[n+nx]+W[n+nx+1])/4));x.fillStyle=x.strokeStyle=c;x.beginPath();P.forEach((p,k)=>k?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));x.closePath();x.fill();x.lineWidth=.6;x.stroke()});[[R.na,'#d92d20','高'],[R.nb,'#1570ef','低']].forEach(([n,c,t])=>{const p=pr(x0+((n%nx)+.5)*h,y0+(((n/nx)|0)+.5)*h,W[n]);mk(p[0],p[1],c,t)})}
+$('run').onclick=()=>{if(!G)return;job=solve();requestAnimationFrame(tick)};
+$('ex').oninput=$('rt').oninput=draw;
+$('smp').onclick=()=>load(JSON.parse(JSON.stringify(SAMPLE)));
+$('gs').onchange=()=>G&&build();
+$('f').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{let t;try{t=new TextDecoder('shift_jis').decode(r.result)}catch(_){t=new TextDecoder().decode(r.result)}
+const d=parseDXF(t);if(!Object.keys(d).length){$('info').textContent='ENTITIESを読めませんでした(ASCII DXF のみ対応)';return}load(d)};r.readAsArrayBuffer(f)};
+load(JSON.parse(JSON.stringify(SAMPLE)));
+</script></body></html>
